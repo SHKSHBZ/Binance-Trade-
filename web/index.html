@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Binance SMC Dashboard</title>
+    <link rel="stylesheet" href="style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&family=Roboto+Mono:wght@400;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="bg-glow"></div>
+    
+    <div class="container">
+        <!-- Header & Action Bar -->
+        <header>
+            <div class="logo">
+                <span class="neon-text">BINANCE</span>
+                <span class="muted-text">SMC SNIPER // V1</span>
+            </div>
+            <div class="action-bar">
+                <div class="status-indicator" id="bot-status-indicator">
+                    <div class="pulse-dot" id="pulse-dot"></div>
+                    <span id="bot-status-text">SYSTEM OFFLINE</span>
+                </div>
+                <button class="btn btn-start" id="btn-start" onclick="startBot()">START BOT</button>
+                <button class="btn btn-stop" id="btn-stop" onclick="stopBot()">EMERGENCY STOP</button>
+            </div>
+        </header>
+
+        <!-- Main Stats -->
+        <div class="glass-panel stats-panel">
+            <div class="stat-box">
+                <div class="stat-label">TOTAL USDT BALANCE</div>
+                <div class="stat-value" id="total-balance">$0.00</div>
+            </div>
+            <div class="stat-box">
+                <div class="stat-label">UNREALIZED P&L</div>
+                <div class="stat-value" id="unrealized-pnl">$0.00</div>
+            </div>
+            <div class="stat-box">
+                <div class="stat-label">LAST DATA SYNC</div>
+                <div class="stat-value" id="last-update">--:--:--</div>
+            </div>
+        </div>
+
+        <!-- Radar Section -->
+        <h2 class="section-title">ACTIVE FAIR VALUE GAPS (PLANNED TRADES)</h2>
+        <div class="glass-panel radar-panel" id="fvg-container">
+            <div class="empty-state">Bot Offline. Click START BOT to begin scanning.</div>
+        </div>
+        
+        <!-- Trade History Section -->
+        <h2 class="section-title">RECENT EXECUTED TRADES</h2>
+        <div class="glass-panel history-panel" id="history-container">
+            <div class="empty-state">No recent trades found.</div>
+        </div>
+
+        <!-- System Logs -->
+        <h2 class="section-title">SYSTEM TERMINAL</h2>
+        <div class="glass-panel terminal-panel">
+            <div class="terminal-content" id="log-container">
+                <div class="log-line"><span class="log-time">[SYSTEM]</span> Waiting for master control...</div>
+            </div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
