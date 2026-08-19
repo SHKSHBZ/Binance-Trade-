@@ -38,11 +38,19 @@ def parse_timestamps(series: pd.Series) -> pd.Series:
 
 
 def load_ohlcv(filename: str, start=None, end=None) -> pd.DataFrame:
-    """Load a DATA/ CSV with correct timestamps, sorted, optionally sliced."""
+    """Load a DATA/ CSV with correct timestamps, sorted, deduplicated,
+    optionally sliced.
+
+    Duplicate timestamps do occur in these files (e.g. the same 15m bar
+    repeated 4 times in BTCUSDT_15m_Jan_to_Jul2026.csv) and break any
+    caller that uses .get_loc() or otherwise assumes a unique index, so
+    this is fixed at the loader rather than in every consumer.
+    """
     path = filename if os.path.isabs(filename) else os.path.join(DATA_DIR, filename)
     df = pd.read_csv(path)
     df["timestamp"] = parse_timestamps(df["timestamp"])
     df = df.set_index("timestamp").sort_index()
+    df = df[~df.index.duplicated(keep="first")]
     if start or end:
         df = df.loc[start:end]
     return df

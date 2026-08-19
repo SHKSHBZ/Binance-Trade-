@@ -1,22 +1,31 @@
 """
-SMC V2 live bot (Variant C) -- Binance USD-M Futures TESTNET.
+SMC V2 live bot (Variant C) -- Binance USD-M Futures TESTNET, multi-symbol.
 
-Runs the exact strategy validated in backtest_engine.py by driving the
-same smc_engine.SMCEngine. If this bot does something, the backtest does
-it too -- that equivalence is the whole point of the shared engine, and
-it is checked by validate_engine.py.
+Runs the exact strategy validated in backtest_engine.py / backtest_portfolio.py
+by driving smc_engine.SMCEngine once per symbol. If this bot does something,
+the backtest does it too -- that equivalence is the whole point of the
+shared engine, and it is checked by validate_engine.py.
 
+Single-symbol BTC backtest (the only symbol with real historical data in
+this repo -- see fetch_data.py to get the others):
     2025:  79 trades, 43.0% win rate, +105.4%, 9.5% max drawdown
     2026:  30 trades, 40.0% win rate,  +66.3%, 4.8% max drawdown
     with 0.1% stop slippage + funding: +65.4% and +52.5%
+ETH/SOL/BNB/XRP have NOT been backtested. Their inclusion here is
+untested territory -- see the caveats at the bottom of this file.
 
-Order lifecycle per trade:
+Order lifecycle per symbol, per trade:
     setup arms  ->  LIMIT entry rests at the 50% OB midpoint
     filled      ->  STOP_MARKET and TAKE_PROFIT_MARKET placed, closePosition
     unfilled    ->  cancelled after 96 bars (24h)
 
-Guards: one position at a time, 3% daily loss circuit breaker, and a
-minimum 2.0 reward:risk checked at fill time.
+Guards, shared across the whole portfolio (not per symbol):
+    - a portfolio-wide correlation cap on concurrent open positions
+      (default 2 of 5) -- these coins move together, so 5 independent
+      1%-risk positions is not 5% risk, it is closer to one 5% crypto-beta
+      bet the moment a market-wide move hits every stop at once
+    - a 3% daily loss circuit breaker on total account balance
+    - a 2.0 minimum reward:risk, checked per symbol at fill time
 
 TESTNET ONLY by default. Read the caveats at the bottom of this file
 before even thinking about TESTNET=false.
@@ -45,7 +54,10 @@ API_SECRET = os.getenv("BINANCE_TESTNET_SECRET_KEY")
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
-SYMBOL = os.getenv("SYMBOL", "BTCUSDT")
+SYMBOLS = [s.strip().upper() for s in
+           os.getenv("SYMBOLS", "BTCUSDT,ETHUSDT,SOLUSDT,BNBUSDT,XRPUSDT").split(",") if s.strip()]
+MAX_CONCURRENT_POSITIONS = int(os.getenv("MAX_CONCURRENT_POSITIONS", "2"))
+
 INTERVAL = Client.KLINE_INTERVAL_15MINUTE
 POLL_SECONDS = 20
 STATE_FILE = "state_v2.json"
@@ -66,7 +78,7 @@ def log(msg: str, notify: bool = False):
     line = f"[{stamp}] {msg}"
     print(line, flush=True)
     recent_logs.insert(0, line)
-    del recent_logs[60:]
+    del recent_logs[80:]
     if notify:
         send_telegram(msg)
 
@@ -104,9 +116,9 @@ class Filters:
         return round(int(q / self.step) * self.step, self.qty_dp)
 
 
-def fetch_klines(limit: int) -> pd.DataFrame:
+def fetch_klines(symbol: str, limit: int) -> pd.DataFrame:
     """Closed candles only -- the in-progress candle is dropped."""
-    raw = client.futures_klines(symbol=SYMBOL, interval=INTERVAL, limit=min(limit, 1500))
+    raw = client.futures_klines(symbol=symbol, interval=INTERVAL, limit=min(limit, 1500))
     df = pd.DataFrame(raw, columns=[
         "open_time", "open", "high", "low", "close", "volume", "close_time",
         "qav", "trades", "tbb", "tbq", "ignore"])
@@ -124,8 +136,8 @@ def usdt_balance() -> float:
     return 0.0
 
 
-def open_position():
-    for p in client.futures_position_information(symbol=SYMBOL):
+def open_position(symbol: str):
+    for p in client.futures_position_information(symbol=symbol):
         amt = float(p["positionAmt"])
         if amt != 0:
             return {"side": "LONG" if amt > 0 else "SHORT", "qty": abs(amt),
@@ -134,24 +146,32 @@ def open_position():
     return None
 
 
-# ------------------------------------------------------------------ the bot
-class Bot:
-    def __init__(self):
-        self.filters = Filters(SYMBOL)
+# ----------------------------------------------------------- per-symbol unit
+class SymbolWorker:
+    """Everything needed to run the sequence for ONE symbol.
+
+    Holds no shared portfolio state (balance, circuit breaker, the
+    concurrency cap) -- that lives in Portfolio, which is what makes the
+    cap meaningful across symbols rather than accidental.
+    """
+
+    def __init__(self, symbol: str):
+        self.symbol = symbol
+        self.filters = Filters(symbol)
         self.engine = SMCEngine(PARAMS)
         self.last_bar_time = None
         self.entry_order_id = None
         self.armed = None
         self.armed_at = None
-        self.day = None
-        self.day_start_balance = None
-        self.halted = False
+        self.pending_target = None
+        self.pending_rr = None
+        self.current_position = None
         try:
-            client.futures_change_leverage(symbol=SYMBOL, leverage=PARAMS.leverage)
+            client.futures_change_leverage(symbol=symbol, leverage=PARAMS.leverage)
         except Exception as exc:
-            log(f"could not set leverage: {exc}")
+            log(f"[{symbol}] could not set leverage: {exc}")
 
-    # -- engine -----------------------------------------------------------
+    # -- engine -------------------------------------------------------------
     def refresh_engine(self, df: pd.DataFrame, blocked_now: bool):
         """Replay history through a fresh engine up to the latest closed bar.
 
@@ -177,27 +197,28 @@ class Bot:
                 self.engine.clear_armed()
         return armed, (df.index[armed_idx] if armed_idx is not None else None)
 
-    # -- orders -----------------------------------------------------------
-    def place_entry(self, setup, balance: float):
+    # -- orders ---------------------------------------------------------
+    def place_entry(self, setup, balance: float) -> bool:
         target, rr = self.engine.compute_target(setup)
         if target is None or rr is None or rr < PARAMS.min_rr:
-            log(f"setup rejected: R:R {rr if rr else 0:.2f} below {PARAMS.min_rr}")
+            log(f"[{self.symbol}] setup rejected: R:R {rr if rr else 0:.2f} below {PARAMS.min_rr}")
             return False
 
         qty_raw, notional = position_size(balance, setup.limit_price, setup.stop_price, PARAMS)
         qty = self.filters.qty(qty_raw)
         if qty < self.filters.min_qty:
-            log(f"setup rejected: size {qty} below exchange minimum {self.filters.min_qty}")
+            log(f"[{self.symbol}] setup rejected: size {qty} below exchange minimum "
+                f"{self.filters.min_qty}")
             return False
 
         side = "BUY" if setup.direction == "LONG" else "SELL"
         price = self.filters.price(setup.limit_price)
         try:
             order = client.futures_create_order(
-                symbol=SYMBOL, side=side, type="LIMIT", timeInForce="GTC",
+                symbol=self.symbol, side=side, type="LIMIT", timeInForce="GTC",
                 quantity=qty, price=price)
         except Exception as exc:
-            log(f"entry order rejected by exchange: {exc}", notify=True)
+            log(f"[{self.symbol}] entry order rejected by exchange: {exc}", notify=True)
             return False
 
         self.entry_order_id = order["orderId"]
@@ -205,9 +226,8 @@ class Bot:
         self.armed_at = datetime.now(timezone.utc)
         self.pending_target = target
         self.pending_rr = rr
-        self.pending_qty = qty
 
-        log(f"ARMED {setup.direction} {SYMBOL}\n"
+        log(f"ARMED {setup.direction} {self.symbol}\n"
             f"  limit {price}  stop {self.filters.price(setup.stop_price)}  "
             f"target {self.filters.price(target)}\n"
             f"  R:R {rr:.2f}  qty {qty}  notional ${notional:,.0f}\n"
@@ -221,32 +241,52 @@ class Bot:
         for kind, order_type, trigger in (("stop", "STOP_MARKET", stop),
                                           ("target", "TAKE_PROFIT_MARKET", tp)):
             try:
-                client.futures_create_order(symbol=SYMBOL, side=opposite,
+                client.futures_create_order(symbol=self.symbol, side=opposite,
                                             type=order_type, stopPrice=trigger,
                                             closePosition=True)
-                log(f"  {kind} order placed @ {trigger}")
+                log(f"  [{self.symbol}] {kind} order placed @ {trigger}")
             except Exception as exc:
-                log(f"FAILED to place {kind} order: {exc}", notify=True)
+                log(f"[{self.symbol}] FAILED to place {kind} order: {exc}", notify=True)
 
     def cancel_entry(self, reason: str):
         if self.entry_order_id is None:
             return
         try:
-            client.futures_cancel_order(symbol=SYMBOL, orderId=self.entry_order_id)
-            log(f"entry order cancelled -- {reason}")
+            client.futures_cancel_order(symbol=self.symbol, orderId=self.entry_order_id)
+            log(f"[{self.symbol}] entry order cancelled -- {reason}")
         except Exception as exc:
-            log(f"cancel failed (likely already gone): {exc}")
+            log(f"[{self.symbol}] cancel failed (likely already gone): {exc}")
         self.entry_order_id = None
         self.armed = None
         self.armed_at = None
 
     def cancel_all(self):
         try:
-            client.futures_cancel_all_open_orders(symbol=SYMBOL)
+            client.futures_cancel_all_open_orders(symbol=self.symbol)
         except Exception as exc:
-            log(f"cancel-all failed: {exc}")
+            log(f"[{self.symbol}] cancel-all failed: {exc}")
 
-    # -- guards -----------------------------------------------------------
+    def as_state(self):
+        return {"armed": self.armed.as_dict() if self.armed else None,
+                "entry_order_id": self.entry_order_id}
+
+
+# ---------------------------------------------------------------- portfolio
+class Portfolio:
+    """Owns the shared guards: the circuit breaker and the concurrency cap.
+
+    A symbol's own logic never decides whether it's ALLOWED to enter --
+    that call is made here, exactly once per tick, using the state of the
+    whole book. This mirrors run_portfolio() in backtest_portfolio.py,
+    which is regression-tested against the single-symbol backtest.
+    """
+
+    def __init__(self, symbols):
+        self.workers = {s: SymbolWorker(s) for s in symbols}
+        self.day = None
+        self.day_start_balance = None
+        self.halted = False
+
     def check_circuit_breaker(self, balance: float):
         today = datetime.now(timezone.utc).date()
         if today != self.day:
@@ -257,23 +297,22 @@ class Bot:
         if self.day_start_balance and not self.halted:
             if balance <= self.day_start_balance * (1 - PARAMS.daily_loss_limit_pct):
                 self.halted = True
-                log(f"CIRCUIT BREAKER: down {PARAMS.daily_loss_limit_pct*100:.0f}% today "
+                log(f"CIRCUIT BREAKER: portfolio down "
+                    f"{PARAMS.daily_loss_limit_pct*100:.0f}% today "
                     f"(${self.day_start_balance:,.2f} -> ${balance:,.2f}). "
-                    f"No new entries until tomorrow.", notify=True)
+                    f"No new entries on any symbol until tomorrow.", notify=True)
 
-    # -- state ------------------------------------------------------------
-    def save_state(self, balance, position, df):
+    def save_state(self, balance: float, positions: dict):
         state = {
             "updated": datetime.now(timezone.utc).isoformat(),
             "mode": "TESTNET" if TESTNET else "LIVE",
-            "symbol": SYMBOL,
+            "symbols": list(self.workers.keys()),
+            "max_concurrent_positions": MAX_CONCURRENT_POSITIONS,
             "balance": balance,
             "halted_today": self.halted,
-            "last_closed_bar": str(df.index[-1]) if len(df) else None,
-            "position": position,
-            "armed": self.armed.as_dict() if self.armed else None,
-            "entry_order_id": self.entry_order_id,
-            "logs": recent_logs[:40],
+            "positions": positions,
+            "workers": {s: w.as_state() for s, w in self.workers.items()},
+            "logs": recent_logs[:50],
         }
         try:
             with open(STATE_FILE, "w") as fh:
@@ -281,97 +320,129 @@ class Bot:
         except Exception as exc:
             print(f"state write failed: {exc}", flush=True)
 
-    # -- main loop --------------------------------------------------------
-    def tick(self):
-        df = fetch_klines(PARAMS.required_bars + 50)
-        if len(df) < 200:
-            log("not enough history yet")
+    # -- pass 1: reconcile each symbol against the exchange, one tick -----
+    def _reconcile(self, w: SymbolWorker, df: pd.DataFrame):
+        """Detect fills, tidy up closed positions, expire stale resting
+        orders. Never places a new order -- that's pass 2's job, once the
+        true portfolio-wide committed count is known."""
+        position = open_position(w.symbol)
+        w.current_position = position
+
+        if position is None and w.armed is not None and w.entry_order_id is None:
+            w.cancel_all()
+            w.armed = None
+
+        if position is not None and w.entry_order_id is not None:
+            log(f"FILLED {position['side']} {position['qty']} {w.symbol} "
+                f"@ {position['entry']}", notify=True)
+            w.place_exits(w.armed, w.pending_target)
+            w.entry_order_id = None
             return
 
-        balance = usdt_balance()
-        position = open_position()
-        self.check_circuit_breaker(balance)
-
-        latest = df.index[-1]
-        new_bar = latest != self.last_bar_time
-
-        # position closed while we weren't looking -> tidy up resting orders
-        if position is None and self.armed is not None and self.entry_order_id is None:
-            self.cancel_all()
-            self.armed = None
-
-        if position is not None:
-            if self.entry_order_id is not None:
-                # the limit filled: attach exchange-side stop and target
-                log(f"FILLED {position['side']} {position['qty']} @ {position['entry']}",
-                    notify=True)
-                self.place_exits(self.armed, self.pending_target)
-                self.entry_order_id = None
-            if new_bar:
-                self.last_bar_time = latest
-                self.save_state(balance, position, df)
-            return
-
-        # entry order still resting -- expire it if the window has passed
-        if self.entry_order_id is not None:
+        if position is None and w.entry_order_id is not None:
             still_open = False
             try:
-                o = client.futures_get_order(symbol=SYMBOL, orderId=self.entry_order_id)
+                o = client.futures_get_order(symbol=w.symbol, orderId=w.entry_order_id)
                 still_open = o["status"] in ("NEW", "PARTIALLY_FILLED")
             except Exception as exc:
-                log(f"order status check failed: {exc}")
+                log(f"[{w.symbol}] order status check failed: {exc}")
             if not still_open:
-                self.entry_order_id = None
-                self.armed = None
-            elif self.armed_at:
-                age_bars = (datetime.now(timezone.utc) - self.armed_at).total_seconds() / 900
+                w.entry_order_id = None
+                w.armed = None
+            elif w.armed_at:
+                age_bars = (datetime.now(timezone.utc) - w.armed_at).total_seconds() / 900
                 if age_bars > PARAMS.retest_window_bars:
-                    self.cancel_entry("24h fill window expired")
+                    w.cancel_entry("24h fill window expired")
 
+    # -- pass 2: look for a new entry, gated by the shared cap ------------
+    def _seek_entry(self, w: SymbolWorker, df: pd.DataFrame, balance: float,
+                    committed: int) -> bool:
+        """Returns True if a new order was placed (caller increments committed)."""
+        if w.current_position is not None or w.entry_order_id is not None:
+            return False  # already committed, nothing to seek
+
+        new_bar = df.index[-1] != w.last_bar_time
         if not new_bar:
-            return
-        self.last_bar_time = latest
+            return False
+        w.last_bar_time = df.index[-1]
 
-        blocked = (self.entry_order_id is not None) or self.halted
-        setup, armed_time = self.refresh_engine(df, blocked)
+        at_cap = committed >= MAX_CONCURRENT_POSITIONS
+        blocked = self.halted or at_cap
+        setup, armed_time = w.refresh_engine(df, blocked)
 
-        if setup is not None and self.entry_order_id is None and not self.halted:
-            fresh = armed_time is not None and armed_time >= df.index[-1]
-            if fresh:
-                self.place_entry(setup, balance)
-
-        self.save_state(balance, position, df)
+        if setup is None or self.halted or at_cap:
+            return False
+        fresh = armed_time is not None and armed_time >= df.index[-1]
+        if not fresh:
+            return False
+        return w.place_entry(setup, balance)
 
     def run(self):
-        log(f"SMC V2 (Variant C) started on {SYMBOL} "
-            f"[{'TESTNET' if TESTNET else 'LIVE'}] balance ${usdt_balance():,.2f}",
-            notify=True)
+        log(f"SMC V2 (Variant C) started [{'TESTNET' if TESTNET else 'LIVE'}] "
+            f"on {', '.join(self.workers)}  "
+            f"max concurrent {MAX_CONCURRENT_POSITIONS}/{len(self.workers)}  "
+            f"balance ${usdt_balance():,.2f}", notify=True)
         while True:
             try:
-                self.tick()
+                balance = usdt_balance()
+                self.check_circuit_breaker(balance)
+
+                dfs = {}
+                for sym, w in self.workers.items():
+                    df = fetch_klines(sym, PARAMS.required_bars + 50)
+                    dfs[sym] = df
+                    if len(df) < 200:
+                        log(f"[{sym}] not enough history yet")
+                        continue
+                    self._reconcile(w, df)
+
+                # true committed exposure, from exchange state, not deltas
+                committed = sum(1 for w in self.workers.values()
+                               if w.current_position is not None
+                               or w.entry_order_id is not None)
+
+                positions = {}
+                for sym, w in self.workers.items():
+                    df = dfs[sym]
+                    if len(df) >= 200:
+                        if self._seek_entry(w, df, balance, committed):
+                            committed += 1
+                    positions[sym] = w.as_state()
+
+                self.save_state(balance, positions)
             except Exception:
                 log(f"tick failed:\n{traceback.format_exc()}")
             time.sleep(POLL_SECONDS)
 
 
 if __name__ == "__main__":
-    Bot().run()
+    Portfolio(SYMBOLS).run()
 
 # ---------------------------------------------------------------------------
 # Before switching TESTNET=false, know what has NOT been established:
 #
-#   * 109 trades across two periods on one symbol. A third of the profit
-#     sits in a handful of trades.
-#   * Three bugs surfaced while building this -- two look-ahead errors and a
-#     date-parsing fault that scrambled 36% of rows. Each made results look
-#     better than reality until caught. There may be a fourth.
+#   * Only BTCUSDT has been backtested. ETH/SOL/BNB/XRP run the identical
+#     strategy code on this exchange, but the strategy has never been
+#     validated against their price history. Use fetch_data.py and
+#     backtest_portfolio.py before trusting them with anything.
+#   * 109 BTC trades across two periods. A third of the profit sits in a
+#     handful of trades.
+#   * Three bugs surfaced while building this -- two look-ahead errors and
+#     a date-parsing fault that scrambled 36% of rows -- plus two more in
+#     the portfolio driver itself (a one-bar exit-timing divergence and an
+#     ambiguous file resolver), both caught by validate_engine.py before
+#     they reached this file. There may be another.
 #   * The backtest assumes a resting limit fills whenever price touches its
 #     level. Real queue position may not cooperate. This is the single
 #     largest unmodelled risk and testnet is what measures it.
 #   * Funding, real fill quality and exchange downtime are absent from the
 #     backtest entirely.
+#   * The MAX_CONCURRENT_POSITIONS cap limits how many symbols can be open
+#     at once, but does NOT model correlation directly -- two "different"
+#     positions can still be the same underlying bet if BTC and ETH are
+#     both long at the same time. Watch this on testnet, don't assume it.
 #
-# Run on testnet for 30-40 trades, then compare actual fill rate and win rate
-# against 40%. If fills come in well below expectation, or the win rate sits
-# under ~33%, the edge is not there.
+# Run on testnet for 30-40 trades per symbol, then compare actual fill rate
+# and win rate against the backtested ~40%. If fills come in well below
+# expectation, or the win rate sits under ~33%, the edge is not there.
 # ---------------------------------------------------------------------------
