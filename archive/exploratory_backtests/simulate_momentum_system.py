@@ -33,10 +33,13 @@ bar via .shift(1).
 import pandas as pd
 import numpy as np
 import os
+import sys
 
+# archived: data_loader.py lives at the repo root, two levels up
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from data_loader import load_ohlcv
 
-DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "DATA")
+DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "DATA")
 
 STARTING_CAPITAL = 1000.0
 RISK_PER_TRADE_PCT = 0.01

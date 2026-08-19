@@ -1,26 +1,28 @@
 """
-Daily Support/Resistance Bounce Backtester (15M execution)
+2-Day Support/Resistance Bounce Backtester (15M execution)
 =============================================================
-A standalone strategy, deliberately simpler than the FVG/EMA/RSI/Volume
-stack tested elsewhere in this repo:
+Variant of simulate_daily_sr_bounce.py using a wider reference window:
 
-  - Resistance = Previous Day High (PDH)
-  - Support    = Previous Day Low (PDL)
+  - Resistance = High of the previous 2-day block
+  - Support    = Low of the previous 2-day block
 
-Rule: BUY when price wicks into Support and closes back above it
-(a bounce). SELL when price wicks into Resistance and closes back
-below it (a rejection). Target is the opposite level of the day's
-range; stop is a small buffer beyond the level that was tested.
+Days are grouped into non-overlapping 2-day blocks (e.g. Jan1-2,
+Jan3-4, ...). Each block trades against the high/low of the block
+before it. Rule: BUY when price wicks into Support and closes back
+above it. SELL when price wicks into Resistance and closes back below
+it. Target is the opposite level; stop is a small buffer beyond the
+level tested.
 
-No trend filter, no momentum filter -- this isolates whether daily
-S/R levels alone have an edge on 15M BTC price action.
+Everything else (risk sizing, commission, cooldown) is identical to
+simulate_daily_sr_bounce.py so the two window lengths can be compared
+directly.
 """
 
 import pandas as pd
 import numpy as np
 import os
 
-DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "DATA")
+DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "DATA")  # archived: DATA/ lives at the repo root, two levels up
 DATA_FILE = "BTCUSDT_15m_Jan_to_Jul2026.csv"
 
 STARTING_CAPITAL = 200.0
@@ -32,8 +34,10 @@ STOP_BUFFER_PCT = 0.001    # stop placed 0.1% beyond the tested level
 COOLDOWN_BARS = 6          # min bars between trades (mirrors rest of the suite)
 FORWARD_BARS = 200
 
+BLOCK_DAYS = 2
 
-def simulate_daily_sr_bounce():
+
+def simulate_2day_sr_bounce(stop_buffer_pct=STOP_BUFFER_PCT):
     fpath = os.path.join(DATA_DIR, DATA_FILE)
     df = pd.read_csv(fpath)
     df['timestamp'] = pd.to_datetime(df['timestamp'], dayfirst=True, format='mixed')
@@ -45,13 +49,18 @@ def simulate_daily_sr_bounce():
     closes = df['close'].values
     times = df.index
 
-    # --- Previous Day High (resistance) / Low (support) ---
+    # --- Previous 2-Day Block High (resistance) / Low (support) ---
     day_key = df.index.normalize()
-    df_daily = df.groupby(day_key).agg(high=('high', 'max'), low=('low', 'min'))
-    df_daily['pdh'] = df_daily['high'].shift(1)
-    df_daily['pdl'] = df_daily['low'].shift(1)
-    resistance = df_daily['pdh'].reindex(day_key).values
-    support = df_daily['pdl'].reindex(day_key).values
+    day_number = (day_key - day_key.min()).days
+    block_key = day_number // BLOCK_DAYS
+
+    df_block = pd.DataFrame({'block': block_key, 'high': highs, 'low': lows})
+    df_block = df_block.groupby('block').agg(high=('high', 'max'), low=('low', 'min'))
+    df_block['prev_high'] = df_block['high'].shift(1)
+    df_block['prev_low'] = df_block['low'].shift(1)
+
+    resistance = pd.Series(block_key).map(df_block['prev_high']).values
+    support = pd.Series(block_key).map(df_block['prev_low']).values
 
     capital = STARTING_CAPITAL
     peak = capital
@@ -75,14 +84,14 @@ def simulate_daily_sr_bounce():
         if lows[bar] <= sup and closes[bar] > sup:
             direction = 'LONG'
             entry_price = sup
-            stop_price = sup * (1 - STOP_BUFFER_PCT)
+            stop_price = sup * (1 - stop_buffer_pct)
             target_price = res
 
         # Rejection off Resistance -> SHORT
         elif highs[bar] >= res and closes[bar] < res:
             direction = 'SHORT'
             entry_price = res
-            stop_price = res * (1 + STOP_BUFFER_PCT)
+            stop_price = res * (1 + stop_buffer_pct)
             target_price = sup
 
         if not direction:
@@ -154,11 +163,11 @@ def simulate_daily_sr_bounce():
 
 
 if __name__ == "__main__":
-    print("Running Daily Support/Resistance Bounce Strategy (15M execution)...")
-    print(f"Resistance = Previous Day High | Support = Previous Day Low")
+    print("Running 2-Day Support/Resistance Bounce Strategy (15M execution)...")
+    print(f"Resistance = Prev 2-Day Block High | Support = Prev 2-Day Block Low")
     print(f"Risk: {RISK_PER_TRADE_PCT*100}% | Leverage: {LEVERAGE}x | Data: {DATA_FILE}\n")
 
-    trades, final, mdd = simulate_daily_sr_bounce()
+    trades, final, mdd = simulate_2day_sr_bounce()
     wins = len([t for t in trades if t['pnl'] > 0])
 
     print("TRADE LOG:")

@@ -18,7 +18,7 @@ import sys
 from collections import defaultdict
 
 # ─── Configuration ──────────────────────────────────────────────────────────
-DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "DATA")
+DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "DATA")  # archived: DATA/ lives at the repo root, two levels up
 MIN_RALLY_POINTS = 500
 SWING_LOOKBACK = 20          # Bars each side to confirm swing
 GANN_MAX_ROTATIONS = 10      # Max full rotations for level calc

@@ -1,22 +1,23 @@
 """
-SMC FVG + EMA 5/13/21 + RSI + Volume + Liquidity Sweep Backtester
+SMC FVG + Structure Break (CHoCH) + RSI + Volume + Liquidity Sweep
 ====================================================================
-Adds a Liquidity Sweep filter on top of the existing FVG + EMA + RSI +
-Volume baseline (simulate_ema_rsi_vol.py):
+Variant of simulate_liquidity_sweep.py that replaces the lagging EMA
+5/13/21 stack trend filter with a reactive structure-break (Change of
+Character) confirmation:
 
-1. Liquidity Pools:
-   - EQH/EQL: Equal Highs / Equal Lows -- repeated swing extremes within
-     a tight tolerance, where retail stop losses cluster.
-   - PDH/PDL: Previous Day High / Low.
-2. Sweep Event: price wicks through a pool level and closes back inside
-   it on the same candle (a stop-hunt rejection).
-3. Entry Gate: an FVG LONG entry is only taken if a bullish sweep
-   (sell-side liquidity swept) occurred within the last SWEEP_VALID_BARS
-   bars. SHORT entries require a bearish sweep (buy-side liquidity swept).
+  - Bullish confirmed: price CLOSES above the most recent confirmed
+    swing high (a Break of Structure / CHoCH to the upside).
+  - Bearish confirmed: price CLOSES below the most recent confirmed
+    swing low.
 
-Everything else (FVG detection, EMA 5/13/21 stack, RSI, volume
-confirmation, stop/target/time exit) is unchanged from the baseline so
-the effect of the sweep filter can be isolated.
+This fires the moment structure actually shifts, rather than waiting
+for a moving-average stack to catch up -- addressing the "EMA is
+lagging, entries are late/expensive" concern.
+
+Everything else (FVG detection, RSI, volume confirmation, the
+EQH/EQL + PDH/PDL liquidity sweep gate, stop/target/time exit) is
+identical to simulate_liquidity_sweep.py so the effect of swapping the
+trend filter can be isolated.
 """
 
 import pandas as pd
@@ -25,17 +26,13 @@ import os
 
 from simulate_ema_rsi_vol import compute_rsi
 
-DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "DATA")
+DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "DATA")  # archived: DATA/ lives at the repo root, two levels up
 DATA_FILE = "BTCUSDT_15m_Jan_to_Jul2026.csv"
 
 STARTING_CAPITAL = 200.0
 LEVERAGE = 10
 RISK_PER_TRADE_PCT = 0.05
 COMMISSION_PCT = 0.0004
-
-EMA_FAST = 5
-EMA_MID = 13
-EMA_SLOW = 21
 
 RSI_PERIOD = 14
 RSI_LONG_MIN = 50
@@ -49,11 +46,14 @@ VOLUME_MULT = 1.0
 FORWARD_BARS = 200
 FVG_EXPIRY_BARS = 48
 
-# --- Liquidity sweep params ---
-SWING_LOOKBACK = 3          # bars each side to confirm a swing high/low
-EQ_TOLERANCE_PCT = 0.0015   # swing highs/lows within 0.15% count as "equal"
-POOL_EXPIRY_BARS = 200      # a pool is discarded if not swept within this many bars
-SWEEP_VALID_BARS = 8        # a sweep event stays "active" for this many bars after it fires
+# --- Liquidity sweep params (unchanged from simulate_liquidity_sweep.py) ---
+SWING_LOOKBACK = 3
+EQ_TOLERANCE_PCT = 0.0015
+POOL_EXPIRY_BARS = 200
+SWEEP_VALID_BARS = 8
+
+# --- Structure break params ---
+STRUCT_VALID_BARS = 8   # a structure break stays "active" for this many bars after it fires
 
 
 def detect_swings(highs, lows, lb):
@@ -69,14 +69,10 @@ def detect_swings(highs, lows, lb):
 
 
 def build_eq_pools(swing_idxs, values, tol_pct):
-    """Given swing point bar indices and their price values, find pairs
-    within tolerance of each other and emit a pool 'confirmed' at the
-    bar index of the second (later) touch."""
-    pools = []  # (confirmed_bar, level)
+    pools = []
     for i in range(1, len(swing_idxs)):
         bar_j = swing_idxs[i]
         level_j = values[bar_j]
-        # look back over recent prior swings for an equal level
         for k in range(i - 1, max(-1, i - 6), -1):
             bar_i = swing_idxs[k]
             level_i = values[bar_i]
@@ -87,16 +83,13 @@ def build_eq_pools(swing_idxs, values, tol_pct):
     return pools
 
 
-def simulate_liquidity_sweep():
+def simulate_liquidity_sweep_structure():
     fpath = os.path.join(DATA_DIR, DATA_FILE)
     df = pd.read_csv(fpath)
     df['timestamp'] = pd.to_datetime(df['timestamp'], dayfirst=True, format='mixed')
     df.set_index('timestamp', inplace=True)
     df.sort_index(inplace=True)
 
-    df['ema5'] = df['close'].ewm(span=EMA_FAST, adjust=False).mean()
-    df['ema13'] = df['close'].ewm(span=EMA_MID, adjust=False).mean()
-    df['ema21'] = df['close'].ewm(span=EMA_SLOW, adjust=False).mean()
     df['vol_ma'] = df['volume'].rolling(VOLUME_MA_PERIOD).mean()
 
     closes = df['close'].values
@@ -108,31 +101,40 @@ def simulate_liquidity_sweep():
     volumes = df['volume'].values
     vol_ma = df['vol_ma'].values
     times = df.index
-    ema5 = df['ema5'].values
-    ema13 = df['ema13'].values
-    ema21 = df['ema21'].values
     rsi = df['rsi'].values
 
     # --- Previous Day High/Low ---
+    dates = df.index.normalize()
     df_daily = df.resample('1D').agg({'high': 'max', 'low': 'min'})
     df_daily['pdh'] = df_daily['high'].shift(1)
     df_daily['pdl'] = df_daily['low'].shift(1)
-    dates = df.index.normalize()
     pdh_map = df_daily['pdh'].reindex(dates).values
     pdl_map = df_daily['pdl'].reindex(dates).values
 
     # --- Equal Highs / Equal Lows pools ---
     sl_idxs, sh_idxs = detect_swings(highs, lows, SWING_LOOKBACK)
-    eql_pools_raw = build_eq_pools(sl_idxs, lows, EQ_TOLERANCE_PCT)   # (confirmed_bar, level)
+    eql_pools_raw = build_eq_pools(sl_idxs, lows, EQ_TOLERANCE_PCT)
     eqh_pools_raw = build_eq_pools(sh_idxs, highs, EQ_TOLERANCE_PCT)
 
-    # Group pools by confirmation bar for quick lookup while iterating
     eql_by_bar = {}
     for bar, level in eql_pools_raw:
         eql_by_bar.setdefault(bar, []).append(level)
     eqh_by_bar = {}
     for bar, level in eqh_pools_raw:
         eqh_by_bar.setdefault(bar, []).append(level)
+
+    # --- Structure (swing high/low) tracking, confirmed with a lag of
+    # SWING_LOOKBACK bars so no look-ahead is used at trade time ---
+    swing_high_level = np.full(len(closes), np.nan)
+    swing_low_level = np.full(len(closes), np.nan)
+    for idx in sh_idxs:
+        confirmed_bar = idx + SWING_LOOKBACK
+        if confirmed_bar < len(closes):
+            swing_high_level[confirmed_bar] = highs[idx]
+    for idx in sl_idxs:
+        confirmed_bar = idx + SWING_LOOKBACK
+        if confirmed_bar < len(closes):
+            swing_low_level[confirmed_bar] = lows[idx]
 
     capital = STARTING_CAPITAL
     peak = capital
@@ -142,20 +144,38 @@ def simulate_liquidity_sweep():
     active_fvgs = []
     last_trade_bar = 0
 
-    # Active liquidity pools not yet swept: list of dicts {level, type, expiry}
-    active_sell_side = []  # EQL / PDL -- swept by price dropping through & reclaiming (bullish signal)
-    active_buy_side = []   # EQH / PDH -- swept by price rising through & reclaiming (bearish signal)
-
+    active_sell_side = []
+    active_buy_side = []
     last_bull_sweep_bar = -10_000
     last_bear_sweep_bar = -10_000
 
-    warmup = max(EMA_SLOW, RSI_PERIOD, VOLUME_MA_PERIOD, SWING_LOOKBACK * 2) + 2
+    last_swing_high = None
+    last_swing_low = None
+    last_bull_break_bar = -10_000
+    last_bear_break_bar = -10_000
 
-    # seed PDL/PDH as pools once known
+    warmup = max(RSI_PERIOD, VOLUME_MA_PERIOD, SWING_LOOKBACK * 2) + 2
     seeded_pd_date = None
 
     for bar in range(warmup, len(closes)):
-        # Register newly confirmed EQL/EQH pools
+        # Update most recent confirmed swing levels
+        if not np.isnan(swing_high_level[bar]):
+            last_swing_high = swing_high_level[bar]
+        if not np.isnan(swing_low_level[bar]):
+            last_swing_low = swing_low_level[bar]
+
+        # Structure break: close beyond the last confirmed swing point
+        if last_swing_high is not None and closes[bar] > last_swing_high:
+            last_bull_break_bar = bar
+            last_swing_high = None  # require a new swing high before re-triggering
+        if last_swing_low is not None and closes[bar] < last_swing_low:
+            last_bear_break_bar = bar
+            last_swing_low = None
+
+        recent_bull_break = (bar - last_bull_break_bar) <= STRUCT_VALID_BARS
+        recent_bear_break = (bar - last_bear_break_bar) <= STRUCT_VALID_BARS
+
+        # --- Liquidity pools (EQL/EQH + PDL/PDH) ---
         if bar in eql_by_bar:
             for lvl in eql_by_bar[bar]:
                 active_sell_side.append({'level': lvl, 'expiry': bar + POOL_EXPIRY_BARS})
@@ -163,7 +183,6 @@ def simulate_liquidity_sweep():
             for lvl in eqh_by_bar[bar]:
                 active_buy_side.append({'level': lvl, 'expiry': bar + POOL_EXPIRY_BARS})
 
-        # Register PDL/PDH as pools once per day
         cur_date = dates[bar]
         if cur_date != seeded_pd_date:
             seeded_pd_date = cur_date
@@ -172,16 +191,13 @@ def simulate_liquidity_sweep():
             if not np.isnan(pdh_map[bar]):
                 active_buy_side.append({'level': pdh_map[bar], 'expiry': bar + POOL_EXPIRY_BARS})
 
-        # Expire stale pools
         active_sell_side = [p for p in active_sell_side if bar <= p['expiry']]
         active_buy_side = [p for p in active_buy_side if bar <= p['expiry']]
 
-        # Check for sweep events this bar (wick through level, close back inside)
         for p in list(active_sell_side):
             if lows[bar] < p['level'] and closes[bar] > p['level']:
                 last_bull_sweep_bar = bar
                 active_sell_side.remove(p)
-
         for p in list(active_buy_side):
             if highs[bar] > p['level'] and closes[bar] < p['level']:
                 last_bear_sweep_bar = bar
@@ -198,19 +214,16 @@ def simulate_liquidity_sweep():
             gap_top = lows[bar]
             ob_stop = min(lows[bar-2], lows[bar-1], lows[bar]) - (closes[bar] * 0.0005)
             target = highs[bar] + abs(highs[bar] - ob_stop) * 1.5
-
             active_fvgs.append({
                 'dir': 'LONG', 'top': gap_top, 'bottom': gap_bottom,
                 'ob_stop': ob_stop, 'target': target,
                 'expiry': bar + FVG_EXPIRY_BARS, 'mitigated': False
             })
-
         elif highs[bar] < lows[bar-2] and closes[bar-1] < opens[bar-1] and impulse_vol_ok:
             gap_bottom = highs[bar]
             gap_top = lows[bar-2]
             ob_stop = max(highs[bar-2], highs[bar-1], highs[bar]) + (closes[bar] * 0.0005)
             target = lows[bar] - abs(ob_stop - lows[bar]) * 1.5
-
             active_fvgs.append({
                 'dir': 'SHORT', 'top': gap_top, 'bottom': gap_bottom,
                 'ob_stop': ob_stop, 'target': target,
@@ -222,20 +235,18 @@ def simulate_liquidity_sweep():
         if bar - last_trade_bar < 6:
             continue
 
-        bullish_stack = ema5[bar] > ema13[bar] > ema21[bar]
-        bearish_stack = ema5[bar] < ema13[bar] < ema21[bar]
         rsi_ok_long = RSI_LONG_MIN < rsi[bar] < RSI_LONG_MAX
         rsi_ok_short = RSI_SHORT_MIN < rsi[bar] < RSI_SHORT_MAX
 
         for fvg in active_fvgs:
             direction = None
 
-            if (fvg['dir'] == 'LONG' and bullish_stack and rsi_ok_long and recent_bull_sweep):
+            if (fvg['dir'] == 'LONG' and recent_bull_break and rsi_ok_long and recent_bull_sweep):
                 if lows[bar] <= fvg['top'] and highs[bar] > fvg['top']:
                     direction = 'LONG'
                     entry_price = fvg['top']
 
-            elif (fvg['dir'] == 'SHORT' and bearish_stack and rsi_ok_short and recent_bear_sweep):
+            elif (fvg['dir'] == 'SHORT' and recent_bear_break and rsi_ok_short and recent_bear_sweep):
                 if highs[bar] >= fvg['bottom'] and lows[bar] < fvg['bottom']:
                     direction = 'SHORT'
                     entry_price = fvg['bottom']
@@ -313,12 +324,12 @@ def simulate_liquidity_sweep():
 
 
 if __name__ == "__main__":
-    print("Running SMC FVG + EMA 5/13/21 + RSI + Volume + Liquidity Sweep Strategy...")
-    print(f"Config: EMA {EMA_FAST}/{EMA_MID}/{EMA_SLOW} | RSI({RSI_PERIOD}) | Vol MA({VOLUME_MA_PERIOD}) "
+    print("Running SMC FVG + Structure Break (CHoCH) + RSI + Volume + Liquidity Sweep Strategy...")
+    print(f"Config: Structure break window {STRUCT_VALID_BARS} bars | RSI({RSI_PERIOD}) | Vol MA({VOLUME_MA_PERIOD}) "
           f"| Sweep window: {SWEEP_VALID_BARS} bars | Risk: {RISK_PER_TRADE_PCT*100}% | Leverage: {LEVERAGE}x")
     print(f"Data: {DATA_FILE}\n")
 
-    trades, final, mdd = simulate_liquidity_sweep()
+    trades, final, mdd = simulate_liquidity_sweep_structure()
     wins = len([t for t in trades if t['pnl'] > 0])
 
     print("TRADE LOG (last 20):")

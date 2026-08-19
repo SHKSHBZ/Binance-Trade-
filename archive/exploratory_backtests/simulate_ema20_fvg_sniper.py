@@ -28,7 +28,7 @@ import pandas as pd
 import numpy as np
 import os
 
-DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "DATA")
+DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "DATA")  # archived: DATA/ lives at the repo root, two levels up
 
 STARTING_CAPITAL = 1000.0
 LEVERAGE = 50

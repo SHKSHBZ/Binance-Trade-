@@ -13,7 +13,7 @@ import pandas as pd
 import numpy as np
 import os
 
-DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "DATA")
+DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "DATA")  # archived: DATA/ lives at the repo root, two levels up
 DATA_FILE = "BTCUSDT_1h_Jan_to_Jul2026.csv"
 
 STARTING_CAPITAL = 200.0

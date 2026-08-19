@@ -1,21 +1,22 @@
 """
-SMC FVG + EMA 5/13/21 + RSI + Volume + Weekly/Daily Liquidity Sweep
+SMC FVG + EMA 5/13/21 + RSI + Volume + Liquidity Sweep Backtester
 ====================================================================
-Standalone variant of simulate_liquidity_sweep.py that replaces the
-swing-based EQH/EQL pools with pure institutional reference levels:
+Adds a Liquidity Sweep filter on top of the existing FVG + EMA + RSI +
+Volume baseline (simulate_ema_rsi_vol.py):
 
-  - PWH / PWL: Previous Week High / Low
-  - PDH / PDL: Previous Day High / Low
-
-Theory: these levels are watched by every participant (not just an
-algorithmic "equal highs" pattern match), so sweeps of them should be
-higher-quality liquidity grabs than swing-based EQH/EQL, at the cost of
-far fewer setups (only one week/day boundary each).
+1. Liquidity Pools:
+   - EQH/EQL: Equal Highs / Equal Lows -- repeated swing extremes within
+     a tight tolerance, where retail stop losses cluster.
+   - PDH/PDL: Previous Day High / Low.
+2. Sweep Event: price wicks through a pool level and closes back inside
+   it on the same candle (a stop-hunt rejection).
+3. Entry Gate: an FVG LONG entry is only taken if a bullish sweep
+   (sell-side liquidity swept) occurred within the last SWEEP_VALID_BARS
+   bars. SHORT entries require a bearish sweep (buy-side liquidity swept).
 
 Everything else (FVG detection, EMA 5/13/21 stack, RSI, volume
-confirmation, sweep-then-reclaim logic, stop/target/time exit) is
-identical to simulate_liquidity_sweep.py so the two pool sources can be
-compared directly.
+confirmation, stop/target/time exit) is unchanged from the baseline so
+the effect of the sweep filter can be isolated.
 """
 
 import pandas as pd
@@ -24,7 +25,7 @@ import os
 
 from simulate_ema_rsi_vol import compute_rsi
 
-DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "DATA")
+DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "DATA")  # archived: DATA/ lives at the repo root, two levels up
 DATA_FILE = "BTCUSDT_15m_Jan_to_Jul2026.csv"
 
 STARTING_CAPITAL = 200.0
@@ -48,11 +49,45 @@ VOLUME_MULT = 1.0
 FORWARD_BARS = 200
 FVG_EXPIRY_BARS = 48
 
+# --- Liquidity sweep params ---
+SWING_LOOKBACK = 3          # bars each side to confirm a swing high/low
+EQ_TOLERANCE_PCT = 0.0015   # swing highs/lows within 0.15% count as "equal"
+POOL_EXPIRY_BARS = 200      # a pool is discarded if not swept within this many bars
 SWEEP_VALID_BARS = 8        # a sweep event stays "active" for this many bars after it fires
-POOL_EXPIRY_BARS = 4 * 96   # a week/day pool is dropped if not swept within ~4 days of bars (15m bars)
 
 
-def simulate_liquidity_sweep_wd():
+def detect_swings(highs, lows, lb):
+    sl, sh = [], []
+    for i in range(lb, len(lows) - lb):
+        wl = lows[i - lb:i + lb + 1]
+        wh = highs[i - lb:i + lb + 1]
+        if lows[i] == wl.min() and list(wl).count(lows[i]) == 1:
+            sl.append(i)
+        if highs[i] == wh.max() and list(wh).count(highs[i]) == 1:
+            sh.append(i)
+    return sl, sh
+
+
+def build_eq_pools(swing_idxs, values, tol_pct):
+    """Given swing point bar indices and their price values, find pairs
+    within tolerance of each other and emit a pool 'confirmed' at the
+    bar index of the second (later) touch."""
+    pools = []  # (confirmed_bar, level)
+    for i in range(1, len(swing_idxs)):
+        bar_j = swing_idxs[i]
+        level_j = values[bar_j]
+        # look back over recent prior swings for an equal level
+        for k in range(i - 1, max(-1, i - 6), -1):
+            bar_i = swing_idxs[k]
+            level_i = values[bar_i]
+            if abs(level_j - level_i) / level_i <= tol_pct:
+                pool_level = (level_i + level_j) / 2
+                pools.append((bar_j, pool_level))
+                break
+    return pools
+
+
+def simulate_liquidity_sweep():
     fpath = os.path.join(DATA_DIR, DATA_FILE)
     df = pd.read_csv(fpath)
     df['timestamp'] = pd.to_datetime(df['timestamp'], dayfirst=True, format='mixed')
@@ -79,20 +114,25 @@ def simulate_liquidity_sweep_wd():
     rsi = df['rsi'].values
 
     # --- Previous Day High/Low ---
-    day_key = df.index.normalize()
-    df_daily = df.groupby(day_key).agg(high=('high', 'max'), low=('low', 'min'))
+    df_daily = df.resample('1D').agg({'high': 'max', 'low': 'min'})
     df_daily['pdh'] = df_daily['high'].shift(1)
     df_daily['pdl'] = df_daily['low'].shift(1)
-    pdh_map = df_daily['pdh'].reindex(day_key).values
-    pdl_map = df_daily['pdl'].reindex(day_key).values
+    dates = df.index.normalize()
+    pdh_map = df_daily['pdh'].reindex(dates).values
+    pdl_map = df_daily['pdl'].reindex(dates).values
 
-    # --- Previous Week High/Low ---
-    week_key = df.index.to_period('W')
-    df_weekly = df.groupby(week_key).agg(high=('high', 'max'), low=('low', 'min'))
-    df_weekly['pwh'] = df_weekly['high'].shift(1)
-    df_weekly['pwl'] = df_weekly['low'].shift(1)
-    pwh_map = df_weekly['pwh'].reindex(week_key).values
-    pwl_map = df_weekly['pwl'].reindex(week_key).values
+    # --- Equal Highs / Equal Lows pools ---
+    sl_idxs, sh_idxs = detect_swings(highs, lows, SWING_LOOKBACK)
+    eql_pools_raw = build_eq_pools(sl_idxs, lows, EQ_TOLERANCE_PCT)   # (confirmed_bar, level)
+    eqh_pools_raw = build_eq_pools(sh_idxs, highs, EQ_TOLERANCE_PCT)
+
+    # Group pools by confirmation bar for quick lookup while iterating
+    eql_by_bar = {}
+    for bar, level in eql_pools_raw:
+        eql_by_bar.setdefault(bar, []).append(level)
+    eqh_by_bar = {}
+    for bar, level in eqh_pools_raw:
+        eqh_by_bar.setdefault(bar, []).append(level)
 
     capital = STARTING_CAPITAL
     peak = capital
@@ -102,49 +142,49 @@ def simulate_liquidity_sweep_wd():
     active_fvgs = []
     last_trade_bar = 0
 
-    active_sell_side = []  # PDL / PWL -- swept downward & reclaimed (bullish signal)
-    active_buy_side = []   # PDH / PWH -- swept upward & reclaimed (bearish signal)
+    # Active liquidity pools not yet swept: list of dicts {level, type, expiry}
+    active_sell_side = []  # EQL / PDL -- swept by price dropping through & reclaiming (bullish signal)
+    active_buy_side = []   # EQH / PDH -- swept by price rising through & reclaiming (bearish signal)
 
     last_bull_sweep_bar = -10_000
     last_bear_sweep_bar = -10_000
-    sweep_source = {}  # bar -> 'PDL'/'PWL'/'PDH'/'PWH' for reporting
 
-    seeded_day = None
-    seeded_week = None
+    warmup = max(EMA_SLOW, RSI_PERIOD, VOLUME_MA_PERIOD, SWING_LOOKBACK * 2) + 2
 
-    warmup = max(EMA_SLOW, RSI_PERIOD, VOLUME_MA_PERIOD) + 2
+    # seed PDL/PDH as pools once known
+    seeded_pd_date = None
 
     for bar in range(warmup, len(closes)):
-        cur_day = day_key[bar]
-        cur_week = week_key[bar]
+        # Register newly confirmed EQL/EQH pools
+        if bar in eql_by_bar:
+            for lvl in eql_by_bar[bar]:
+                active_sell_side.append({'level': lvl, 'expiry': bar + POOL_EXPIRY_BARS})
+        if bar in eqh_by_bar:
+            for lvl in eqh_by_bar[bar]:
+                active_buy_side.append({'level': lvl, 'expiry': bar + POOL_EXPIRY_BARS})
 
-        if cur_day != seeded_day:
-            seeded_day = cur_day
+        # Register PDL/PDH as pools once per day
+        cur_date = dates[bar]
+        if cur_date != seeded_pd_date:
+            seeded_pd_date = cur_date
             if not np.isnan(pdl_map[bar]):
-                active_sell_side.append({'level': pdl_map[bar], 'type': 'PDL', 'expiry': bar + POOL_EXPIRY_BARS})
+                active_sell_side.append({'level': pdl_map[bar], 'expiry': bar + POOL_EXPIRY_BARS})
             if not np.isnan(pdh_map[bar]):
-                active_buy_side.append({'level': pdh_map[bar], 'type': 'PDH', 'expiry': bar + POOL_EXPIRY_BARS})
+                active_buy_side.append({'level': pdh_map[bar], 'expiry': bar + POOL_EXPIRY_BARS})
 
-        if cur_week != seeded_week:
-            seeded_week = cur_week
-            if not np.isnan(pwl_map[bar]):
-                active_sell_side.append({'level': pwl_map[bar], 'type': 'PWL', 'expiry': bar + POOL_EXPIRY_BARS})
-            if not np.isnan(pwh_map[bar]):
-                active_buy_side.append({'level': pwh_map[bar], 'type': 'PWH', 'expiry': bar + POOL_EXPIRY_BARS})
-
+        # Expire stale pools
         active_sell_side = [p for p in active_sell_side if bar <= p['expiry']]
         active_buy_side = [p for p in active_buy_side if bar <= p['expiry']]
 
+        # Check for sweep events this bar (wick through level, close back inside)
         for p in list(active_sell_side):
             if lows[bar] < p['level'] and closes[bar] > p['level']:
                 last_bull_sweep_bar = bar
-                sweep_source[bar] = p['type']
                 active_sell_side.remove(p)
 
         for p in list(active_buy_side):
             if highs[bar] > p['level'] and closes[bar] < p['level']:
                 last_bear_sweep_bar = bar
-                sweep_source[bar] = p['type']
                 active_buy_side.remove(p)
 
         recent_bull_sweep = (bar - last_bull_sweep_bar) <= SWEEP_VALID_BARS
@@ -252,13 +292,6 @@ def simulate_liquidity_sweep_wd():
                 if dd > max_dd:
                     max_dd = dd
 
-                # find nearest recorded sweep source for reporting
-                src = None
-                for b in range(bar, max(bar - SWEEP_VALID_BARS - 1, -1), -1):
-                    if b in sweep_source:
-                        src = sweep_source[b]
-                        break
-
                 trades.append({
                     'dir': direction,
                     'time': times[bar],
@@ -267,8 +300,7 @@ def simulate_liquidity_sweep_wd():
                     'target': target_price,
                     'pnl': net,
                     'bal': capital,
-                    'exit_r': exit_r,
-                    'sweep_src': src
+                    'exit_r': exit_r
                 })
 
                 last_trade_bar = bar
@@ -281,20 +313,19 @@ def simulate_liquidity_sweep_wd():
 
 
 if __name__ == "__main__":
-    print("Running SMC FVG + EMA 5/13/21 + RSI + Volume + Weekly/Daily Liquidity Sweep Strategy...")
+    print("Running SMC FVG + EMA 5/13/21 + RSI + Volume + Liquidity Sweep Strategy...")
     print(f"Config: EMA {EMA_FAST}/{EMA_MID}/{EMA_SLOW} | RSI({RSI_PERIOD}) | Vol MA({VOLUME_MA_PERIOD}) "
-          f"| Pools: PWH/PWL + PDH/PDL | Sweep window: {SWEEP_VALID_BARS} bars "
-          f"| Risk: {RISK_PER_TRADE_PCT*100}% | Leverage: {LEVERAGE}x")
+          f"| Sweep window: {SWEEP_VALID_BARS} bars | Risk: {RISK_PER_TRADE_PCT*100}% | Leverage: {LEVERAGE}x")
     print(f"Data: {DATA_FILE}\n")
 
-    trades, final, mdd = simulate_liquidity_sweep_wd()
+    trades, final, mdd = simulate_liquidity_sweep()
     wins = len([t for t in trades if t['pnl'] > 0])
 
-    print("TRADE LOG:")
-    for i, t in enumerate(trades):
+    print("TRADE LOG (last 20):")
+    for i, t in enumerate(trades[-20:]):
         m = "+" if t['pnl'] >= 0 else "-"
         print(f"#{i+1:<3} {t['dir']:<5} {str(t['time'])[:16]} Entry: ${t['entry']:.0f} Stop: ${t['stop']:.0f} "
-              f"Target: ${t['target']:.0f} Src: {t['sweep_src']} -> {t['exit_r']} {m}${abs(t['pnl']):.2f} (Bal: ${t['bal']:.2f})")
+              f"Target: ${t['target']:.0f} -> {t['exit_r']} {m}${abs(t['pnl']):.2f} (Bal: ${t['bal']:.2f})")
 
     ret = (final - STARTING_CAPITAL) / STARTING_CAPITAL * 100
     print(f"\nTrades: {len(trades)} | Wins: {wins} | WinRate: {wins/len(trades)*100 if trades else 0:.1f}%")

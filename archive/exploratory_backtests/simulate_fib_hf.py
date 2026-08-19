@@ -1,31 +1,32 @@
 """
-Fibonacci Retracement Backtest Strategy (Improved)
-==================================================
-Key Fixes:
-1. Stop Loss set beyond the 1.0 (Swing Extreme) instead of 0.786.
-2. Trend filter (EMA-50). Only take trades aligned with 4H trend.
-3. Detailed reporting.
+Fibonacci Retracement Backtest Strategy (High Frequency)
+========================================================
+Key Fixes to generate MORE TRADES:
+1. Switched swing detection from 4H to 1H timeframe.
+2. Reduced swing lookback to 12 hours (finds many more swings).
+3. EMA trend filter moved to 1H EMA-100.
+4. Entering at 0.5 Fibonacci level (gets hit more often than 0.618).
 """
 
 import pandas as pd
 import numpy as np
 import os
 
-DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "DATA")
+DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "DATA")  # archived: DATA/ lives at the repo root, two levels up
 DATA_FILE = "BTCUSDT_1h_Jan_to_Jul2026.csv"
 
 STARTING_CAPITAL = 200.0
 LEVERAGE = 10
-RISK_PER_TRADE_PCT = 0.08
+RISK_PER_TRADE_PCT = 0.05
 COMMISSION_PCT = 0.0004
-SWING_LOOKBACK_4H = 8
-EMA_PERIOD_4H = 50
 
-ENTRY_LEVEL = 0.618      # Trade the 0.618 retracement
-STOP_LEVEL = 1.0       # Stop loss beyond the swing extreme (1.0)
-TARGET_LEVEL = 0.0     # Target the original swing extreme
-
-FORWARD_BARS = 300
+# HIGH FREQUENCY SETTINGS
+SWING_LOOKBACK_1H = 12    # Highest/lowest in 12 hours
+EMA_PERIOD_1H = 100       # Trend filter
+ENTRY_LEVEL = 0.5         # 0.5 gets hit much more often than 0.618
+STOP_LEVEL = 1.0          # Stop loss beyond the swing extreme
+TARGET_LEVEL = 0.0        # Target the original swing extreme
+FORWARD_BARS = 100        # Hold for max ~4 days
 
 def detect_swings(highs, lows, lb):
     sl, sh = [], []
@@ -40,32 +41,22 @@ def detect_swings(highs, lows, lb):
 
 def simulate_fibonacci():
     fpath = os.path.join(DATA_DIR, DATA_FILE)
-    df_1h = pd.read_csv(fpath)
-    df_1h['timestamp'] = pd.to_datetime(df_1h['timestamp'], dayfirst=True, format='mixed')
-    df_1h.set_index('timestamp', inplace=True)
-    df_1h.sort_index(inplace=True)
+    df = pd.read_csv(fpath)
+    df['timestamp'] = pd.to_datetime(df['timestamp'], dayfirst=True, format='mixed')
+    df.set_index('timestamp', inplace=True)
+    df.sort_index(inplace=True)
 
-    df_4h = df_1h.resample('4h').agg({'open': 'first', 'high': 'max', 'low': 'min', 'close': 'last', 'volume': 'sum'}).dropna()
-    sl_idxs, sh_idxs = detect_swings(df_4h['high'].values, df_4h['low'].values, SWING_LOOKBACK_4H)
-    
-    sl_times = [df_4h.index[i] for i in sl_idxs]
-    sh_times = [df_4h.index[i] for i in sh_idxs]
-    
-    ema = df_4h['close'].ewm(span=EMA_PERIOD_4H, adjust=False).mean()
-    
-    lows = df_1h['low'].values
-    highs = df_1h['high'].values
-    closes = df_1h['close'].values
-    opens = df_1h['open'].values
-    times = df_1h.index
+    lows = df['low'].values
+    highs = df['high'].values
+    closes = df['close'].values
+    opens = df['open'].values
+    times = df.index
 
-    def get_ema(t):
-        best = None
-        for e in ema.index:
-            if e <= t: best = e
-            else: break
-        return ema.get(best) if best is not None else None
-
+    # Swing detection on 1H directly!
+    sl_idxs, sh_idxs = detect_swings(highs, lows, SWING_LOOKBACK_1H)
+    
+    ema = df['close'].ewm(span=EMA_PERIOD_1H, adjust=False).mean().values
+    
     capital = STARTING_CAPITAL
     peak = capital
     max_dd = 0
@@ -73,51 +64,48 @@ def simulate_fibonacci():
     
     last_trade_bar = 0
 
-    for bar in range(100, len(closes)):
-        if bar - last_trade_bar < 24: continue # 24h cooldown
+    for bar in range(50, len(closes)):
+        if bar - last_trade_bar < 6: continue # Only 6h cooldown for more trades
         
-        current_time = times[bar]
-        
-        recent_sls = [t for t in sl_times if t < current_time]
-        recent_shs = [t for t in sh_times if t < current_time]
+        # Find the most recent swings before current bar
+        recent_sls = [i for i in sl_idxs if i < bar]
+        recent_shs = [i for i in sh_idxs if i < bar]
         
         if not recent_sls or not recent_shs: continue
         
-        last_sl_time = recent_sls[-1]
-        last_sh_time = recent_shs[-1]
+        last_sl_idx = recent_sls[-1]
+        last_sh_idx = recent_shs[-1]
         
-        ev = get_ema(current_time)
-        if ev is None: continue
-        
+        ev = ema[bar]
         direction = None
         
-        if last_sl_time > last_sh_time:
-            # Most recent swing is a LOW. So price moved from HIGH down to LOW.
-            # We look for a SHORT on the bounce.
-            leg_high = df_4h.loc[last_sh_time]['high']
-            leg_low = df_4h.loc[last_sl_time]['low']
+        # Determine the leg direction based on which swing happened last
+        if last_sl_idx > last_sh_idx:
+            # Last swing was a LOW. Price fell from HIGH to LOW. Bear leg.
+            # Look for a SHORT on the bounce.
+            leg_high = highs[last_sh_idx]
+            leg_low = lows[last_sl_idx]
             
             # Trend Filter: Only short if price is below EMA
             if closes[bar] < ev:
                 entry_price = leg_low + (leg_high - leg_low) * ENTRY_LEVEL
-                stop_price = leg_low + (leg_high - leg_low) * STOP_LEVEL # 1.0 (the swing high)
-                target_price = leg_low - (leg_high - leg_low) * 0.272    # Extension
+                stop_price = leg_low + (leg_high - leg_low) * STOP_LEVEL 
+                target_price = leg_low - (leg_high - leg_low) * 0.272
                 
-                # Check if we touch entry
                 if highs[bar] >= entry_price and closes[bar] < entry_price:
                     direction = "SHORT"
             
         else:
-            # Most recent swing is a HIGH. Price moved from LOW up to HIGH.
+            # Last swing was a HIGH. Price rose from LOW to HIGH. Bull leg.
             # Look for a LONG on the pullback.
-            leg_low = df_4h.loc[last_sl_time]['low']
-            leg_high = df_4h.loc[last_sh_time]['high']
+            leg_low = lows[last_sl_idx]
+            leg_high = highs[last_sh_idx]
             
             # Trend Filter: Only long if price is above EMA
             if closes[bar] > ev:
                 entry_price = leg_high - (leg_high - leg_low) * ENTRY_LEVEL
-                stop_price = leg_high - (leg_high - leg_low) * STOP_LEVEL # 1.0 (the swing low)
-                target_price = leg_high + (leg_high - leg_low) * 0.272    # Extension
+                stop_price = leg_high - (leg_high - leg_low) * STOP_LEVEL
+                target_price = leg_high + (leg_high - leg_low) * 0.272
                 
                 if lows[bar] <= entry_price and closes[bar] > entry_price:
                     direction = "LONG"
@@ -133,7 +121,8 @@ def simulate_fibonacci():
         target_dist = abs(target_price - exec_price)
         if stop_dist == 0: continue
         
-        if (target_dist / stop_dist) < 1.0: continue
+        # Reduced R:R requirement to allow more trades
+        if (target_dist / stop_dist) < 0.8: continue
         
         risk_amt = capital * RISK_PER_TRADE_PCT
         pos_usd = min((risk_amt / stop_dist) * exec_price, capital * LEVERAGE)
@@ -190,7 +179,7 @@ def simulate_fibonacci():
     return trades, capital, max_dd
 
 if __name__ == "__main__":
-    print("Running Fibonacci Retracement Strategy...")
+    print("Running High Frequency Fibonacci Retracement Strategy...")
     trades, final, mdd = simulate_fibonacci()
     wins = len([t for t in trades if t['pnl'] > 0])
     
