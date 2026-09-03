@@ -50,6 +50,15 @@ correlated bet than five independent ones.
 ```
 smc_engine.py            The strategy. Single source of truth -- every
                           backtest and the live bot drive this same code.
+smc_luxalgo.py            Faithful bar-by-bar port of the LuxAlgo "Smart
+                          Money Concepts" TradingView indicator. Labels
+                          OHLCV with dual (internal-5 / swing-50)
+                          structure, BOS/CHoCH, volatility-filtered order
+                          blocks with mitigation, FVGs with the auto
+                          significance threshold, EQH/EQL, and premium/
+                          discount zones -- a testable accuracy anchor for
+                          the concepts the strategy trades on. Standalone:
+                          `python3 smc_luxalgo.py <csv>` prints event counts.
 backtest_engine.py        Single-symbol backtest, driven by smc_engine.
 backtest_portfolio.py     Multi-symbol backtest with a shared balance
                           and portfolio-wide correlation cap.
