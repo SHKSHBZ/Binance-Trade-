@@ -90,6 +90,8 @@ class OrderBlock:
     bar_low: float
     bias: int               # BULLISH or BEARISH
     internal: bool
+    created_index: int = -1              # bar the OB became KNOWN (the break bar)
+    created_time: Optional[pd.Timestamp] = None
     mitigated_index: Optional[int] = None
     mitigated_time: Optional[pd.Timestamp] = None
 
@@ -101,6 +103,8 @@ class OrderBlock:
             "bar_time": self.bar_time,
             "top": self.bar_high,
             "bottom": self.bar_low,
+            "created_index": self.created_index,
+            "created_time": self.created_time,
             "mitigated_index": self.mitigated_index,
             "mitigated_time": self.mitigated_time,
         }
@@ -538,6 +542,7 @@ class SMCLuxAlgo:
             bar_high=float(self._parsed_high[idx]),
             bar_low=float(self._parsed_low[idx]),
             bias=bias, internal=internal,
+            created_index=i, created_time=self._time[i],
         )
         if len(obs) >= 100:
             obs.pop()
