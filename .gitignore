@@ -2,3 +2,4 @@
 __pycache__/
 *.pyc
 state.json
+state_v2.json

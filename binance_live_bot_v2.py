@@ -62,7 +62,13 @@ INTERVAL = Client.KLINE_INTERVAL_15MINUTE
 POLL_SECONDS = 20
 STATE_FILE = "state_v2.json"
 
-PARAMS = SMCParams()
+# Sizing is env-configurable. Defaults are the survivable settings the
+# research established (1% risk, 10x): higher risk raises return AND
+# drawdown one-for-one, and 10x already covers every stop distance the
+# strategy uses -- more leverage only deepens drawdown. See research/.
+RISK_PER_TRADE_PCT = float(os.getenv("RISK_PER_TRADE_PCT", "0.01"))
+LEVERAGE = int(os.getenv("LEVERAGE", "10"))
+PARAMS = SMCParams(risk_per_trade_pct=RISK_PER_TRADE_PCT, leverage=LEVERAGE)
 
 if not API_KEY or not API_SECRET:
     raise SystemExit("Missing BINANCE_TESTNET_API_KEY / BINANCE_TESTNET_SECRET_KEY in .env")
