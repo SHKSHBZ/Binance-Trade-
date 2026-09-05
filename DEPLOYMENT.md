@@ -82,6 +82,12 @@ a position is open if you can.
 
 - `state_v2.json` in the working dir — a live snapshot (balance, armed
   setups, positions, recent logs). `cat state_v2.json | python3 -m json.tool`.
+- `trade_journal.jsonl` — the decision log. Every time the bot plans a
+  trade it records the intention *before* it fills (direction, the exact
+  level it's waiting for price to tap, stop, target, R:R, and the reason:
+  the sweep + CHoCH). Then whether it filled or expired. Read it with
+  `python3 view_journal.py` — it also shows the fill rate (how many planned
+  trades actually triggered), which is the key testnet question.
 - Optional Telegram alerts: set `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID`
   in `.env` to get pinged on ARMED / FILLED / circuit-breaker events.
 

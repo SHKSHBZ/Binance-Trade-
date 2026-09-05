@@ -45,6 +45,7 @@ from dotenv import load_dotenv
 from binance.client import Client
 
 from smc_engine import SMCEngine, SMCParams, position_size
+import trade_journal as journal
 
 load_dotenv()
 
@@ -238,6 +239,9 @@ class SymbolWorker:
             f"target {self.filters.price(target)}\n"
             f"  R:R {rr:.2f}  qty {qty}  notional ${notional:,.0f}\n"
             f"  sweep {setup.sweep_time}  CHoCH {setup.choch_time}", notify=True)
+        # write the bot's stated PLAN, before anything fills (audit trail)
+        journal.planned(self.symbol, setup, target, rr, qty, notional,
+                        "TESTNET" if TESTNET else "LIVE")
         return True
 
     def place_exits(self, setup, target: float):
@@ -262,6 +266,7 @@ class SymbolWorker:
             log(f"[{self.symbol}] entry order cancelled -- {reason}")
         except Exception as exc:
             log(f"[{self.symbol}] cancel failed (likely already gone): {exc}")
+        journal.cancelled(self.symbol, reason)
         self.entry_order_id = None
         self.armed = None
         self.armed_at = None
@@ -341,6 +346,8 @@ class Portfolio:
         if position is not None and w.entry_order_id is not None:
             log(f"FILLED {position['side']} {position['qty']} {w.symbol} "
                 f"@ {position['entry']}", notify=True)
+            journal.filled(w.symbol, position["side"], position["qty"],
+                           position["entry"])
             w.place_exits(w.armed, w.pending_target)
             w.entry_order_id = None
             return
