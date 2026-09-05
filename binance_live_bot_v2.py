@@ -143,6 +143,23 @@ def usdt_balance() -> float:
     return 0.0
 
 
+def realized_pnl_since(symbol: str, since_ms: int):
+    """Sum realized PnL from the exchange's own trade history since a fill.
+
+    Uses the account trade ledger, so it reflects true fills, fees, and the
+    actual close price -- not the bot's assumptions. Returns None on failure
+    (the journal then just records the close without a number)."""
+    try:
+        trades = client.futures_account_trades(symbol=symbol, startTime=since_ms)
+        if not trades:
+            return None
+        return sum(float(t.get("realizedPnl", 0.0)) - float(t.get("commission", 0.0))
+                   for t in trades)
+    except Exception as exc:
+        log(f"[{symbol}] realized-pnl query failed: {exc}")
+        return None
+
+
 def open_position(symbol: str):
     for p in client.futures_position_information(symbol=symbol):
         amt = float(p["positionAmt"])
@@ -173,6 +190,7 @@ class SymbolWorker:
         self.pending_target = None
         self.pending_rr = None
         self.current_position = None
+        self.filled_ts = None      # ms timestamp of the fill, for pnl lookup on close
         try:
             client.futures_change_leverage(symbol=symbol, leverage=PARAMS.leverage)
         except Exception as exc:
@@ -340,6 +358,15 @@ class Portfolio:
         w.current_position = position
 
         if position is None and w.armed is not None and w.entry_order_id is None:
+            # position that was open has now closed (stop or target hit)
+            pnl = realized_pnl_since(w.symbol, w.filled_ts) if w.filled_ts else None
+            if pnl is not None:
+                reason = "target / win" if pnl > 0 else "stop / loss"
+                log(f"CLOSED {w.symbol}  {reason}  realized ${pnl:+.2f}", notify=True)
+            else:
+                reason = "closed"
+            journal.closed(w.symbol, reason, pnl)
+            w.filled_ts = None
             w.cancel_all()
             w.armed = None
 
@@ -348,6 +375,7 @@ class Portfolio:
                 f"@ {position['entry']}", notify=True)
             journal.filled(w.symbol, position["side"], position["qty"],
                            position["entry"])
+            w.filled_ts = int(time.time() * 1000)   # for realized-pnl lookup on close
             w.place_exits(w.armed, w.pending_target)
             w.entry_order_id = None
             return

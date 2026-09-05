@@ -20,12 +20,19 @@ counts = defaultdict(int)
 for e in lines:
     counts[e.get("event", "?")] += 1
 
+closed = [e for e in lines if e.get("event") == "CLOSED" and e.get("pnl") is not None]
+wins = [e for e in closed if e["pnl"] > 0]
+net = sum(e["pnl"] for e in closed)
+
 print(f"Trade journal: {path}   ({len(lines)} events)")
 print(f"  planned {counts['PLANNED']}   filled {counts['FILLED']}   "
       f"cancelled {counts['CANCELLED']}   closed {counts['CLOSED']}")
 if counts["PLANNED"]:
     print(f"  fill rate: {counts['FILLED']}/{counts['PLANNED']} plans triggered "
           f"({100*counts['FILLED']/counts['PLANNED']:.0f}%)")
+if closed:
+    print(f"  outcome  : {len(wins)}/{len(closed)} wins "
+          f"({100*len(wins)/len(closed):.0f}%)   net realized ${net:+,.2f}")
 print("-" * 72)
 
 for e in lines:
