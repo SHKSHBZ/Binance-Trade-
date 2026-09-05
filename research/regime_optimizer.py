@@ -16,6 +16,8 @@ the clean, cost-free numbers is how people fool themselves.
 import numpy as np
 import pandas as pd
 
+import _paths  # noqa: F401  # puts repo root on sys.path
+
 import backtest_engine as be
 from smc_engine import SMCParams
 

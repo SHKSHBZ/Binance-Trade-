@@ -26,6 +26,8 @@ from typing import List, Optional
 import numpy as np
 import pandas as pd
 
+import _paths  # noqa: F401  # puts repo root on sys.path
+
 from data_loader import load_ohlcv
 from smc_luxalgo import label_smc_luxalgo
 

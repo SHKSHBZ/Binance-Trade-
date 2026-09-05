@@ -68,6 +68,8 @@ from typing import List, Optional, Tuple, Dict
 import numpy as np
 import pandas as pd
 
+import _paths  # noqa: F401  # puts repo root on sys.path
+
 # --- constants, mirroring the Pine source -------------------------------
 BULLISH = +1
 BEARISH = -1

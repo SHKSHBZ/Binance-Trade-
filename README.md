@@ -79,8 +79,14 @@ simulate_live_bot_params.py  The original strategy implementation.
                           this on every run -- it's a dependency of the
                           test suite, not legacy code.
 DATA/                     Historical BTCUSDT OHLCV, several timeframes.
-archive/                  Superseded code, kept for reference. See
-                          archive/README.md.
+research/                 Analysis behind the strategy -- NOT traded. The
+                          faithful LuxAlgo SMC labeler (smc_luxalgo.py),
+                          the frozen strategy spec (SMC_STRATEGY_SPEC_v3),
+                          and the studies that justified the design:
+                          per-scenario signal quality, regime/leverage
+                          sweeps, the lag robustness test, and the S/R
+                          comparison. Evidence, not execution -- the live
+                          bot never imports these.
 ```
 
 ## Getting started

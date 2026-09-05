@@ -11,6 +11,8 @@ Test 2: force every entry to happen K bars LATER than the (already causal)
 import numpy as np
 import pandas as pd
 
+import _paths  # noqa: F401  # puts repo root on sys.path
+
 import backtest_engine as be
 from smc_engine import SMCEngine, SMCParams, position_size
 from smc_luxalgo import label_smc_luxalgo
