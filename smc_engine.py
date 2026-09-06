@@ -40,6 +40,10 @@ class SMCParams:
     choch_window_bars: int = 32
     retest_window_bars: int = 96
     ob_search_back_bars: int = 30
+    entry_depth: float = 0.5        # where in the order block the limit sits:
+                                    # 0 = far edge (deepest/best price),
+                                    # 0.5 = midpoint (original), 1 = near edge,
+                                    # <0 = beyond the OB (wait for the hunt first)
     stop_buffer_pct: float = 0.003
     stop_mode: str = "sweep"        # "sweep" (orig) | "ob_prev" | "atr" | "fixed"
     stop_atr_mult: float = 0.5      # for stop_mode == "atr"
@@ -261,9 +265,12 @@ class SMCEngine:
                     setup = None
                     if ob is not None:
                         ob_idx, ob_high, ob_low = ob
-                        mid = (ob_high + ob_low) / 2.0
                         extreme = self.pending_seq["extreme"]
                         is_long = self.pending_seq["dir"] == "LONG"
+                        # entry price by depth into the order block (mid = orig)
+                        ob_range = ob_high - ob_low
+                        mid = (ob_low + p.entry_depth * ob_range if is_long
+                               else ob_high - p.entry_depth * ob_range)
                         # --- stop placement (configurable) ------------------
                         if p.stop_mode == "ob_prev" and ob_idx - 1 >= 0:
                             # low/high of the 15m candle BEFORE the order block
