@@ -183,6 +183,12 @@ class SMCEngine:
             if j < self.n:
                 self._swing_low_at[j] = self.l[i]
 
+        # confirmed S/R levels (bar they became known, price) for 'sr' stops
+        self._sr_lows = [(j, self._swing_low_at[j]) for j in range(self.n)
+                         if not np.isnan(self._swing_low_at[j])]
+        self._sr_highs = [(j, self._swing_high_at[j]) for j in range(self.n)
+                          if not np.isnan(self._swing_high_at[j])]
+
     def start_bar(self) -> int:
         return max(self.p.ltf_swing_lookback * 2, 20)
 
@@ -268,6 +274,20 @@ class SMCEngine:
                         elif p.stop_mode == "fixed":
                             stop = (mid - p.stop_fixed_points if is_long
                                     else mid + p.stop_fixed_points)
+                        elif p.stop_mode == "sr":
+                            # nearest confirmed S/R level beyond the entry, so
+                            # the stop hides behind real structure, not at an
+                            # obvious wick where the next liquidity hunt aims
+                            if is_long:
+                                cands = [lv for cb, lv in self._sr_lows
+                                         if cb <= bar and lv < mid]
+                                base = max(cands) if cands else extreme
+                                stop = base * (1 - p.stop_buffer_pct)
+                            else:
+                                cands = [lv for cb, lv in self._sr_highs
+                                         if cb <= bar and lv > mid]
+                                base = min(cands) if cands else extreme
+                                stop = base * (1 + p.stop_buffer_pct)
                         else:  # "sweep" -- original: sweep wick +/- fixed %
                             stop = (extreme * (1 - p.stop_buffer_pct) if is_long
                                     else extreme * (1 + p.stop_buffer_pct))
