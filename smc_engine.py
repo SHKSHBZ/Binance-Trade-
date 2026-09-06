@@ -41,11 +41,13 @@ class SMCParams:
     retest_window_bars: int = 96
     ob_search_back_bars: int = 30
     stop_buffer_pct: float = 0.003
-    stop_mode: str = "sweep"        # "sweep" (orig) | "ob_prev" | "atr"
+    stop_mode: str = "sweep"        # "sweep" (orig) | "ob_prev" | "atr" | "fixed"
     stop_atr_mult: float = 0.5      # for stop_mode == "atr"
-    stop_min_pct: float = -1.0      # reject setups whose stop is closer than
-                                    # this fraction of entry (negative = off,
-                                    # preserving the original behaviour)
+    stop_fixed_points: float = 200.0  # for stop_mode == "fixed" (price units)
+    stop_min_pct: float = -1.0      # widen stop to at least this fraction of
+                                    # entry (negative = off = original)
+    stop_min_points: float = 0.0    # widen stop to at least this many price
+                                    # points (0 = off). Both floors apply.
     min_rr: float = 2.0
     ltf_bars_per_htf: int = 16
 
@@ -263,16 +265,24 @@ class SMCEngine:
                         elif p.stop_mode == "atr":
                             buf = p.stop_atr_mult * self._atr[bar]
                             stop = (extreme - buf) if is_long else (extreme + buf)
+                        elif p.stop_mode == "fixed":
+                            stop = (mid - p.stop_fixed_points if is_long
+                                    else mid + p.stop_fixed_points)
                         else:  # "sweep" -- original: sweep wick +/- fixed %
                             stop = (extreme * (1 - p.stop_buffer_pct) if is_long
                                     else extreme * (1 + p.stop_buffer_pct))
-                        # --- widen the stop to a minimum floor, which also
-                        # guarantees it sits on the correct side of entry
-                        # (stop_min_pct negative = off, original behaviour) ----
+                        # --- widen the stop to a minimum floor (percent and/or
+                        # absolute points), which also forces the correct side
+                        # of entry. Negative pct / zero points = off = original.
                         dist = (mid - stop) / mid if is_long else (stop - mid) / mid
                         if dist < p.stop_min_pct:
                             stop = (mid * (1 - p.stop_min_pct) if is_long
                                     else mid * (1 + p.stop_min_pct))
+                        if p.stop_min_points > 0:
+                            pts = (mid - stop) if is_long else (stop - mid)
+                            if pts < p.stop_min_points:
+                                stop = (mid - p.stop_min_points if is_long
+                                        else mid + p.stop_min_points)
                         setup = Setup(
                             direction=self.pending_seq["dir"],
                             limit_price=mid, stop_price=stop,
