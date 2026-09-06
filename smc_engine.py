@@ -41,6 +41,11 @@ class SMCParams:
     retest_window_bars: int = 96
     ob_search_back_bars: int = 30
     stop_buffer_pct: float = 0.003
+    stop_mode: str = "sweep"        # "sweep" (orig) | "ob_prev" | "atr"
+    stop_atr_mult: float = 0.5      # for stop_mode == "atr"
+    stop_min_pct: float = -1.0      # reject setups whose stop is closer than
+                                    # this fraction of entry (negative = off,
+                                    # preserving the original behaviour)
     min_rr: float = 2.0
     ltf_bars_per_htf: int = 16
 
@@ -156,6 +161,12 @@ class SMCEngine:
         self.c = df["close"].values
         self.n = len(self.c)
 
+        # ATR(14) on the execution timeframe, for volatility-based stops
+        prevc = np.concatenate(([self.c[0]], self.c[:-1]))
+        tr = np.maximum(self.h - self.l,
+                        np.maximum(np.abs(self.h - prevc), np.abs(self.l - prevc)))
+        self._atr = pd.Series(tr).ewm(alpha=1 / 14, adjust=False).mean().values
+
         self._pools = build_htf_pools(df, self.p)
 
         lo_idx, hi_idx = detect_fractal_swings(self.h, self.l, self.p.ltf_swing_lookback)
@@ -244,9 +255,24 @@ class SMCEngine:
                         ob_idx, ob_high, ob_low = ob
                         mid = (ob_high + ob_low) / 2.0
                         extreme = self.pending_seq["extreme"]
-                        stop = (extreme * (1 - p.stop_buffer_pct)
-                                if self.pending_seq["dir"] == "LONG"
-                                else extreme * (1 + p.stop_buffer_pct))
+                        is_long = self.pending_seq["dir"] == "LONG"
+                        # --- stop placement (configurable) ------------------
+                        if p.stop_mode == "ob_prev" and ob_idx - 1 >= 0:
+                            # low/high of the 15m candle BEFORE the order block
+                            stop = self.l[ob_idx - 1] if is_long else self.h[ob_idx - 1]
+                        elif p.stop_mode == "atr":
+                            buf = p.stop_atr_mult * self._atr[bar]
+                            stop = (extreme - buf) if is_long else (extreme + buf)
+                        else:  # "sweep" -- original: sweep wick +/- fixed %
+                            stop = (extreme * (1 - p.stop_buffer_pct) if is_long
+                                    else extreme * (1 + p.stop_buffer_pct))
+                        # --- widen the stop to a minimum floor, which also
+                        # guarantees it sits on the correct side of entry
+                        # (stop_min_pct negative = off, original behaviour) ----
+                        dist = (mid - stop) / mid if is_long else (stop - mid) / mid
+                        if dist < p.stop_min_pct:
+                            stop = (mid * (1 - p.stop_min_pct) if is_long
+                                    else mid * (1 + p.stop_min_pct))
                         setup = Setup(
                             direction=self.pending_seq["dir"],
                             limit_price=mid, stop_price=stop,
