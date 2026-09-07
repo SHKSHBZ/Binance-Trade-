@@ -40,7 +40,8 @@ class SMCParams:
     choch_window_bars: int = 32
     retest_window_bars: int = 96
     ob_search_back_bars: int = 30
-    entry_depth: float = 0.5        # where in the order block the limit sits:
+    entry_mode: str = "ob"          # "ob" (order block, orig) | "fvg" (gap-fill)
+    entry_depth: float = 0.5        # where in the entry zone the limit sits:
                                     # 0 = far edge (deepest/best price),
                                     # 0.5 = midpoint (original), 1 = near edge,
                                     # <0 = beyond the OB (wait for the hunt first)
@@ -264,13 +265,19 @@ class SMCEngine:
                                        want_bull=(self.pending_seq["dir"] == "LONG"))
                     setup = None
                     if ob is not None:
-                        ob_idx, ob_high, ob_low = ob
+                        ob_idx, ob_high, ob_low, fvg_top, fvg_bottom = ob
                         extreme = self.pending_seq["extreme"]
                         is_long = self.pending_seq["dir"] == "LONG"
-                        # entry price by depth into the order block (mid = orig)
-                        ob_range = ob_high - ob_low
-                        mid = (ob_low + p.entry_depth * ob_range if is_long
-                               else ob_high - p.entry_depth * ob_range)
+                        # entry ZONE: the order block (default) or the FVG (the
+                        # displacement gap -- price retraces to fill it)
+                        if p.entry_mode == "fvg":
+                            zone_high, zone_low = fvg_top, fvg_bottom
+                        else:
+                            zone_high, zone_low = ob_high, ob_low
+                        # entry price by depth into the zone (mid = original)
+                        zone_range = zone_high - zone_low
+                        mid = (zone_low + p.entry_depth * zone_range if is_long
+                               else zone_high - p.entry_depth * zone_range)
                         # --- stop placement (configurable) ------------------
                         if p.stop_mode == "ob_prev" and ob_idx - 1 >= 0:
                             # low/high of the 15m candle BEFORE the order block
@@ -342,9 +349,12 @@ class SMCEngine:
             bull_fvg = self.l[k + 2] > self.h[k] and self.c[k + 1] > self.o[k + 1]
             bear_fvg = self.h[k + 2] < self.l[k] and self.c[k + 1] < self.o[k + 1]
             if want_bull and bull_fvg:
-                return k, float(self.h[k]), float(self.l[k])
+                # (ob_idx, ob_high, ob_low, fvg_top, fvg_bottom)
+                return (k, float(self.h[k]), float(self.l[k]),
+                        float(self.l[k + 2]), float(self.h[k]))
             if (not want_bull) and bear_fvg:
-                return k, float(self.h[k]), float(self.l[k])
+                return (k, float(self.h[k]), float(self.l[k]),
+                        float(self.l[k]), float(self.h[k + 2]))
         return None
 
     def clear_armed(self):
