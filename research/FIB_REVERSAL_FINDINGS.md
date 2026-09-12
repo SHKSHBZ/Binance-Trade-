@@ -50,12 +50,42 @@ With **0.05% stop slippage** added: pooled expectancy +0.060R (from +0.070R),
 still positive in 3/4 years, "edge is real" 85%. It survives — but half the
 edge could disappear under worse fills. This is a marginal edge, not a strong one.
 
+## Waiting for confirmation — tested, and it HURT
+
+We suspected entering on a blind touch of 0.5 was naive, so we tried waiting for
+a 15M confirmation two sensible ways. Both made the edge thinner:
+
+| Entry | Win rate | Pooled expectancy | "Edge is real" | Positive years |
+|---|---|---|---|---|
+| **touch** (enter at 0.5 immediately) | 55% | **+0.070R** | **89%** | 3 of 4 |
+| close (wait for a 15M close past 0.5) | 58% | +0.038R | 77% | 2 of 4 |
+| retag (confirm, then re-enter at 0.5) | 52% | +0.015R | 60% | 2 of 4 |
+
+Why confirmation backfires here:
+- **close:** waiting for a candle to close below 0.5 means we enter *lower* (for
+  a short), so the reward to the origin shrinks and the risk to the extreme
+  grows. Win rate rises (58%) but each win is smaller — net worse.
+- **retag:** demanding a pullback to 0.5 *after* confirmation throws away the
+  fades that run straight to target (the best ones) and selects for setups that
+  already bounced (the weaker ones). Fewer trades, lower quality.
+
+The fade at 0.5 is already an entry *in the direction of the pullback*, so
+there is nothing to "confirm" — the best fades just go. This is the same lesson
+as the SMC entry-depth test: chasing a better/safer entry costs more price than
+it saves. **The simple immediate entry is the honest best.**
+
 ## Verdict and next step
 
 A **small, real, cross-year positive tilt** — genuinely better than the SMC
-strategy (which rode 2025 alone). It is too thin to trade as-is. The user's
-plan was to **refine the 15M entry** (right now entry is a blind touch of 0.5).
-Natural next experiment: require a 15M confirmation at the 0.5 zone (e.g. a 15M
-reversal candle / micro lower-high) to improve fill quality and win rate, then
-re-score. If that lifts expectancy meaningfully, we forward-test; if not, the
-fade is real but too thin to risk money on.
+strategy (which rode 2025 alone). The 15M-confirmation refinement was tested
+and did not help (above); the simple immediate entry at 0.5 remains the best
+version, at +0.070R / Sharpe ~0.67. That is **real but thin** — positive in 3
+of 4 years, survives 0.05% slippage, but small enough that worse fills could
+erase it.
+
+Honest options from here:
+1. **Forward-test the simple fade on testnet** — the only way to learn if the
+   thin edge holds with live fills/slippage, at zero financial risk.
+2. **Stop refining.** We have tested stop placement, the trend filter, and two
+   confirmation entries; each extra knob risks curve-fitting a ~+0.07R edge.
+3. Combine the fade as one input to the planned LLM decision layer.

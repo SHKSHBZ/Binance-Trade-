@@ -37,10 +37,18 @@ MAX_HOLD_15M = 960      # give up after ~10 days of 15M bars (240*4)
 
 
 def run(h1_file, m15_file, stop_level=0.3, trend_filter="off",
-        start=None, end=None, slippage_pct=0.0):
+        start=None, end=None, slippage_pct=0.0, entry_mode="touch"):
     """stop_level: 0.3 or 0.0 (where the fade is invalidated, as a fib level).
     trend_filter: 'off' | 'with' (only fade WITH the daily trend, i.e. short an
-    up-leg only in a daily downtrend) | 'against'."""
+    up-leg only in a daily downtrend) | 'against'.
+    entry_mode:
+      'touch'  -> enter the instant price tags the 0.5 level (blind, baseline)
+      'close'  -> wait for a 15M candle to CLOSE in the fade direction past 0.5
+                  (confirmation the level is rejecting, not bouncing); enter at
+                  that close (worse price, but confirmed).
+      'retag'  -> wait for that same close confirmation, THEN for price to pull
+                  back to 0.5 and enter there (confirmed AND good price, but
+                  some confirmations never retag -> fewer trades)."""
     df1 = load_ohlcv(h1_file, start, end)
     h1, l1 = df1["high"].values, df1["low"].values
     t1 = df1.index
@@ -90,16 +98,30 @@ def run(h1_file, m15_file, stop_level=0.3, trend_filter="off",
         end_i = min(i0 + MAX_HOLD_15M, len(t15))
 
         trade_dir = "SHORT" if direction_leg == "UP" else "LONG"
-        entry_price = lvl_05
 
-        # fill when a 15M candle's range touches the 0.5 level (tag from either
-        # side). Skip legs that have already broken the stop/target by the time
-        # the 1H leg is confirmed (entering those would be hindsight).
+        # Entry: first tag the 0.5 zone, then (in 'close' mode) wait for a 15M
+        # candle to CLOSE past 0.5 in the fade direction before entering.
+        # Bail if the stop/target level is reached before we get an entry.
         fill_i = None
+        entry_price = None
+        tagged = False
+        confirmed = False
         for j in range(i0, end_i):
-            if l15[j] <= entry_price <= h15[j]:
-                fill_i = j; break
-            # invalidated before we ever got a fill -> no trade
+            if l15[j] <= lvl_05 <= h15[j]:
+                tagged = True
+            if tagged and not confirmed:
+                if entry_mode == "touch":
+                    fill_i, entry_price = j, lvl_05; break
+                conf = (c15[j] < lvl_05) if trade_dir == "SHORT" else (c15[j] > lvl_05)
+                if conf:
+                    if entry_mode == "close":
+                        fill_i, entry_price = j, c15[j]; break
+                    confirmed = True          # 'retag': now wait for pullback
+            elif confirmed:
+                # entry_mode == 'retag': enter when price comes back to 0.5
+                if l15[j] <= lvl_05 <= h15[j]:
+                    fill_i, entry_price = j, lvl_05; break
+            # invalidated before we ever got an entry -> no trade
             if trade_dir == "SHORT" and (h15[j] >= lvl_stop or l15[j] <= lvl_target):
                 break
             if trade_dir == "LONG" and (l15[j] <= lvl_stop or h15[j] >= lvl_target):
@@ -175,24 +197,29 @@ if __name__ == "__main__":
                     help="daily-trend filter on the fade direction")
     ap.add_argument("--slippage", type=float, default=0.0,
                     help="stop-fill slippage as a fraction, e.g. 0.0005 = 0.05%%")
+    ap.add_argument("--entry", default="touch", choices=["touch", "close", "retag"],
+                    help="'touch' = blind tag of 0.5; 'close' = wait for a 15M "
+                         "close confirmation in the fade direction")
     args = ap.parse_args()
 
     print("FIB REVERSAL (fade) BACKTEST -- 1H levels, 15M execution")
     print(f"stop at fib {args.stop}   trend filter: {args.trend}   "
-          f"risk 1%/trade, 10x cap\n")
+          f"entry: {args.entry}   risk 1%/trade, 10x cap\n")
 
     pooled = []
     for label, s, e in SCENARIOS:
         f1, f15 = period_files(s)
-        trades, final = run(f1, f15, stop_level=args.stop,
-                            trend_filter=args.trend, start=s, end=e, slippage_pct=args.slippage)
+        trades, final = run(f1, f15, stop_level=args.stop, trend_filter=args.trend,
+                            start=s, end=e, slippage_pct=args.slippage,
+                            entry_mode=args.entry)
         pooled += trades
         print(summarize_trades(trades, STARTING_CAPITAL, label=label).report())
         print()
 
     # 2026 from its own files
     t26, _ = run("BTCUSDT_1h_Jan_to_Jul2026.csv", "BTCUSDT_15m_Jan_to_Jul2026.csv",
-                 stop_level=args.stop, trend_filter=args.trend, slippage_pct=args.slippage)
+                 stop_level=args.stop, trend_filter=args.trend,
+                 slippage_pct=args.slippage, entry_mode=args.entry)
     pooled += t26
     print(summarize_trades(t26, STARTING_CAPITAL, label="2026 (Jan-Jul)").report())
     print()
