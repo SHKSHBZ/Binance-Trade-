@@ -29,7 +29,12 @@ TARGET_OFFSET = 200.0
 HOLD_DAYS = 2          # give the trade up to 2 days to hit target/stop
 
 
-def run(fname, start=None, end=None, offset=TARGET_OFFSET):
+def run(fname, start=None, end=None, offset=TARGET_OFFSET,
+        target_mode="openoff", rr=2.0, min_stop_pct=0.0):
+    """target_mode: 'openoff' = prev open +/- offset (original);
+       'opposite' = the opposite prior-day wick (short->prev low, long->prev high);
+       'rr' = fixed rr multiple of the (floored) stop distance.
+       min_stop_pct: widen the stop to at least this fraction of price."""
     df = load_ohlcv(fname, start, end)
     daily = df.resample("1D").agg(o=("open", "first"), h=("high", "max"),
                                   l=("low", "min"), c=("close", "last")).dropna()
@@ -57,11 +62,21 @@ def run(fname, start=None, end=None, offset=TARGET_OFFSET):
 
         for side in ("SHORT", "LONG"):
             if side == "SHORT":
-                entry, stop, tgt = body_hi, ph, po + offset
+                entry, stop = body_hi, ph
+                if min_stop_pct and (stop - entry) < entry * min_stop_pct:
+                    stop = entry * (1 + min_stop_pct)
+                tgt = (po + offset if target_mode == "openoff" else
+                       pl if target_mode == "opposite" else
+                       entry - rr * (stop - entry))
                 if not (tgt < entry < stop):
                     continue
             else:
-                entry, stop, tgt = body_lo, pl, po - offset
+                entry, stop = body_lo, pl
+                if min_stop_pct and (entry - stop) < entry * min_stop_pct:
+                    stop = entry * (1 - min_stop_pct)
+                tgt = (po - offset if target_mode == "openoff" else
+                       ph if target_mode == "opposite" else
+                       entry + rr * (entry - stop))
                 if not (stop < entry < tgt):
                     continue
 
