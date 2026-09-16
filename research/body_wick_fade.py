@@ -109,7 +109,7 @@ def run(fname, start=None, end=None, offset=TARGET_OFFSET):
             capital = max(capital + gross - fee, 0.0)
             trades.append({"dir": side, "time": t[fill], "entry": entry, "stop": stop,
                            "target": tgt, "qty": qty, "notional": notional,
-                           "pnl": gross - fee, "exit_r": exit_r})
+                           "pnl": gross - fee, "exit_r": exit_r, "exit_px": exit_px})
             if capital <= 0:
                 break
         if capital <= 0:
