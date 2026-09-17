@@ -31,6 +31,24 @@ DISCRETION.** The gap between "2,000 mechanical setups = coin flip" and "the 5
 setups the trader actually picks" IS where any edge would live — and it is not
 mechanizable from OHLC alone.
 
+## Grab & Sweep (the two REVERSAL versions) — tested, LOSE badly
+
+`liquidity_grab_sweep.py`, gold 30m 2020-2026, min-stop filter + honest fees:
+
+| Setup | Type | Trades | Win | avgRR | Return | expR | Edge |
+|---|---|---|---|---|---|---|---|
+| GRAB | reversal | 829 | 33% | 2.5 | −303% | −0.495 | 0% |
+| SWEEP | reversal | 2,532 | 26% | 3.0 | −563% | −0.544 | 0% |
+
+Both lose every single year. The reason is coherent and matches the direction
+test: **gold TRENDS, it does not mean-revert.** Grab and Sweep are *fades*
+(bet on reversal at a level) — on a trending instrument that is betting
+against the odds, so they bleed. The Run (continuation) at least doesn't fight
+the trend, which is why it's a coin flip rather than a steady loser.
+
+So all THREE of the trader's concepts fail mechanically on gold: the reversals
+lose (wrong side of the trend), the continuation is random after costs.
+
 ## Only two honest ways to test discretionary edge
 
 1. **Label real trades**: the trader supplies their actual entries (dates,
