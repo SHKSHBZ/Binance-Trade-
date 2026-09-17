@@ -38,7 +38,13 @@ def ema(s, n):
     return s.ewm(span=n, adjust=False).mean()
 
 
-def run(m5_file, start=None, end=None, rr=RR_MIN):
+def run(m5_file, start=None, end=None, rr=RR_MIN, stop_buf=0.0, use_bail=True,
+        bail_span=21):
+    # stop_buf: extra room below the doji low, as a fraction of the
+    #   entry-to-doji-low distance (0 = stop exactly at doji low, the original).
+    # use_bail: whether the EMA5<slow-EMA bearish cross exits early.
+    # bail_span: the slow EMA the bail compares EMA5 against (21 = original;
+    #   larger = slower/looser bail that lets the trend wobble more).
     df5 = load_ohlcv(m5_file, start, end)
     df = df5.resample("30min").agg(open=("open","first"), high=("high","max"),
                                    low=("low","min"), close=("close","last")).dropna()
@@ -61,6 +67,7 @@ def run(m5_file, start=None, end=None, rr=RR_MIN):
     o = df["open"].values; h = df["high"].values; l = df["low"].values; c = df["close"].values
     e5 = ema(df["close"],5).values; e9 = ema(df["close"],9).values
     e13 = ema(df["close"],13).values; e21 = ema(df["close"],21).values
+    e_bail = ema(df["close"], bail_span).values      # slow EMA for the bail
     t = df.index; n = len(c)
     kz = np.asarray(inKZ)
 
@@ -99,18 +106,19 @@ def run(m5_file, start=None, end=None, rr=RR_MIN):
         if entry is None or doji_lo >= entry:
             continue
 
-        risk = entry - doji_lo
+        stop_px = doji_lo - stop_buf * (entry - doji_lo)   # widened stop (room)
+        risk = entry - stop_px
         target = entry + rr * risk
-        # manage: soft stop (close below doji low), target, or EMA bail
+        # manage: soft stop (close below stop level), target, or EMA bail
         exit_px = exit_r = None
         reached20 = False
         for m in range(start_i+1, min(start_i+MAX_HOLD, n)):
             if h[m] >= target:
                 reached20 = True
                 exit_px, exit_r = target, "TARGET"; busy = m; break
-            if c[m] < doji_lo:                 # soft stop
+            if c[m] < stop_px:                 # soft stop
                 exit_px, exit_r = c[m], "STOP"; busy = m; break
-            if e5[m] < e21[m]:                 # EMA bail
+            if use_bail and e5[m] < e_bail[m]: # EMA bail
                 exit_px, exit_r = c[m], "BAIL"; busy = m; break
         if exit_px is None:
             m = min(start_i+MAX_HOLD, n)-1; exit_px, exit_r = c[m], "TIME"; busy = m
@@ -122,8 +130,8 @@ def run(m5_file, start=None, end=None, rr=RR_MIN):
         gross = qty*(exit_px-entry)
         fee = qty*entry*TAKER + qty*exit_px*TAKER
         capital = max(capital+gross-fee, 0.0)
-        trades.append({"dir":"LONG","time":t[start_i],"entry":entry,"stop":doji_lo,
-                       "target":target,"qty":qty,"notional":qty*entry,
+        trades.append({"dir":"LONG","time":t[start_i],"entry":entry,"stop":stop_px,
+                       "doji_lo":doji_lo,"target":target,"qty":qty,"notional":qty*entry,
                        "pnl":gross-fee,"exit_r":exit_r,"exit_px":exit_px})
         if capital<=0: break
     return trades, hit20
