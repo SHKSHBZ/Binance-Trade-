@@ -1,49 +1,42 @@
 //@version=5
-indicator("Prior Day Levels + Sweep", overlay=true, max_labels_count=20)
+indicator("Prior Day Levels + Sweep", overlay=true, max_lines_count=50, max_labels_count=20)
 
 // ---- what to show ----
 showWick   = input.bool(true,  "Prior-day High/Low (wick)")
 showBody   = input.bool(true,  "Prior-day Body high/low")
 showClose  = input.bool(true,  "Prior-day Close")
 showOpen   = input.bool(true,  "Current-day Open")
-showLabels = input.bool(true,  "Price labels")
 alertSweep = input.bool(true,  "Mark liquidity sweeps")
+lineLen    = input.int(80, "Line length (bars back)", minval=10)
 
 // ---- prior-day values (confirmed, non-repainting) ----
 [pdh, pdl, pdo, pdc] = request.security(syminfo.tickerid, "D", [high[1], low[1], open[1], close[1]], lookahead=barmerge.lookahead_on)
 tdo = request.security(syminfo.tickerid, "D", open, lookahead=barmerge.lookahead_on)
-
 bodyHi = math.max(pdo, pdc)
 bodyLo = math.min(pdo, pdc)
 
-// ---- draw the levels (each steps at the new day) ----
-pHW = plot(showWick  ? pdh    : na, "PD High wick", color.new(color.red,    0), 1, plot.style_linebr)
-pLW = plot(showWick  ? pdl    : na, "PD Low wick",  color.new(color.red,    0), 1, plot.style_linebr)
-plot(showBody  ? bodyHi : na, "PD Body high", color.new(color.orange, 0), 1, plot.style_linebr)
-plot(showBody  ? bodyLo : na, "PD Body low",  color.new(color.orange, 0), 1, plot.style_linebr)
-plot(showClose ? pdc    : na, "PD Close",     color.new(color.blue,   0), 1, plot.style_linebr)
-plot(showOpen  ? tdo    : na, "Day Open",      color.new(color.gray,   0), 1, plot.style_linebr)
-
-// ---- price labels on the latest bar ----
-f_label(_show, _price, _txt, _col) =>
+// ---- draw ONE clean horizontal line + label per level, at the CURRENT value ----
+drawLevel(bool show, float price, color col, string txt) =>
+    var line  ln = na
     var label lb = na
-    if _show and not na(_price)
+    if barstate.islast
+        line.delete(ln)
         label.delete(lb)
-        lb := label.new(bar_index, _price, _txt + " " + str.tostring(_price, format.mintick), style=label.style_label_left, color=color.new(_col, 80), textcolor=_col, size=size.small)
+        if show and not na(price)
+            ln := line.new(bar_index - lineLen, price, bar_index, price, color=col, width=1, extend=extend.right)
+            lb := label.new(bar_index + 5, price, txt + " " + str.tostring(price, format.mintick), style=label.style_label_left, color=color.new(col, 80), textcolor=col, size=size.small)
 
-f_label(showWick,  pdh,    "PD High", color.red)
-f_label(showWick,  pdl,    "PD Low",  color.red)
-f_label(showBody,  bodyHi, "Body Hi", color.orange)
-f_label(showBody,  bodyLo, "Body Lo", color.orange)
-f_label(showClose, pdc,    "PD Close",color.blue)
-f_label(showOpen,  tdo,    "Open",    color.gray)
+drawLevel(showWick,  pdh,    color.red,    "PD High")
+drawLevel(showWick,  pdl,    color.red,    "PD Low")
+drawLevel(showBody,  bodyHi, color.orange, "Body Hi")
+drawLevel(showBody,  bodyLo, color.orange, "Body Lo")
+drawLevel(showClose, pdc,    color.blue,   "PD Close")
+drawLevel(showOpen,  tdo,    color.gray,   "Day Open")
 
 // ---- liquidity sweeps: wick beyond the level, close back inside ----
 sweepHigh = high > pdh and close < pdh     // swept prior-day high -> short cue
 sweepLow  = low  < pdl and close > pdl     // swept prior-day low  -> long cue
-
 plotshape(alertSweep and sweepHigh, "Sweep High", shape.triangledown, location.abovebar, color.red,   size=size.tiny)
 plotshape(alertSweep and sweepLow,  "Sweep Low",  shape.triangleup,   location.belowbar, color.green, size=size.tiny)
-
 alertcondition(sweepHigh, "PD High swept", "Swept prior-day HIGH and closed back inside (short cue)")
 alertcondition(sweepLow,  "PD Low swept",  "Swept prior-day LOW and closed back inside (long cue)")
