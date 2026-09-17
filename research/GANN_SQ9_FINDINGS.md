@@ -34,3 +34,11 @@ dense-grid illusion explains the subjective "it works." A proper beat-random
 test on Nifty data (if provided) would very likely show the same. This is the
 4th "secret system" (SMC, Fib, Gann time-cycles, Gann Sq9) that looks magical
 and tests as random.
+
+## Also tested: prior-day CLOSE as the anchor (user's sheet uses current price)
+
+Same null test, anchoring the ladder on the prior day's close: Gann hit rate
+still == chance (10/20%) across 45/90/180 deg; random grids beat Gann 19-73% of
+the time. The single 45deg/0.10 case (random beats 19%) is not significant
+(p=0.19) and does not hold at other angles -- multiple-comparisons noise.
+Anchoring on the close changes nothing: no edge.
