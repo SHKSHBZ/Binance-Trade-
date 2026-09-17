@@ -124,7 +124,7 @@ def run(m5_file, start=None, end=None, rr=RR_MIN):
         capital = max(capital+gross-fee, 0.0)
         trades.append({"dir":"LONG","time":t[start_i],"entry":entry,"stop":doji_lo,
                        "target":target,"qty":qty,"notional":qty*entry,
-                       "pnl":gross-fee,"exit_r":exit_r})
+                       "pnl":gross-fee,"exit_r":exit_r,"exit_px":exit_px})
         if capital<=0: break
     return trades, hit20
 
