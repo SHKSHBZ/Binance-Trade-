@@ -1,7 +1,33 @@
-# Trident London-Killzone — RECOMMENDED (parked for gold data)
+# Trident London-Killzone — tested on real gold, DOES NOT hold
 
-**Status: the only discretionary setup this session that was NOT disproven.**
-Kept as a recommended strategy to develop further. Code: `trident_killzone.py`.
+**Status: FAILED on the real instrument.** Was parked as promising on a BTC
+proxy; real XAUUSD 2020-2026 disproved it. Code: `trident_killzone.py`.
+
+## Gold verdict (the decisive test) — added after real XAUUSD data arrived
+
+Ran the exact code on real Exness XAUUSD 30m, 2020-2026 (66 setups, causal):
+
+- **20R target: −82%** pooled (hit 20R just 3 times in 66 trades).
+- **No target (ride to stop/bail): +48%** — BUT it is a mirage:
+  - **6 of 7 years lose money**; only 2023 is positive (+122%).
+  - **Top 3 trades = 139% of all profit**; without them, −70R.
+  - The top trade had a **$0.10 stop** (entry 1948.1, doji-low 1948.0) — a
+    stop *inside the spread*. With 1% risk sizing that near-zero risk
+    manufactures a fake +229R. Several such sub-spread-stop trades carry it.
+  - Filter to executable stops (≥0.05% of price ≈ $1): **+180R → −26R.**
+    At ≥0.10%: +6R (breakeven). The "edge" was unexecutable trades.
+  - **Buy-and-hold gold returned +180%** over the same span; the strategy
+    made +48% while losing in 6 of 7 years. It underperforms doing nothing.
+
+**Conclusion: no real edge on gold.** The BTC-proxy promise (+41%) and the
+gold +48% were both driven by a few outlier trades, several with sub-spread
+stops. Same false-positive pattern as every other setup this session. A
+minimum-stop-distance filter (reject risk < ~0.1% of price) should be
+standard in the harness to prevent this class of artifact.
+
+---
+
+## Original BTC-proxy notes (kept for the record — now known to be a mirage)
 
 ## What it is (the user's gold strategy, mechanized)
 
