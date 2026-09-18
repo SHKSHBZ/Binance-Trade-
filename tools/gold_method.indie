@@ -67,8 +67,8 @@ def Main(self, trend_len):
 
     return (
         plot.Line(trend[0], color=trend_color),
-        plot.Line(pend_hi[0], color=color.ORANGE),
-        plot.Line(grab_hi[0], color=color.GRAY),
-        plot.Line(pend_lo[0], color=color.AQUA),
-        plot.Line(grab_lo[0], color=color.GRAY),
+        plot.Line(pend_hi[0], color=color.ORANGE),   # pending high  = orange (target above)
+        plot.Line(grab_hi[0], color=color.GRAY),      # grabbed high  = gray  (spent)
+        plot.Line(pend_lo[0], color=color.AQUA),      # pending low   = aqua  (target below)
+        plot.Line(grab_lo[0], color=color.BLUE),      # grabbed low   = blue  (spent, distinct from grabbed high)
     )
