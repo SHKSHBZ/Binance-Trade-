@@ -1,0 +1,83 @@
+//@version=5
+// ==========================================================================
+//  GOLD METHOD ASSISTANT  --  for the Exness Terminal (TradingView / Pine v5)
+//  A MARKING + ALERT tool for the evidence-based method. It does NOT trade;
+//  it shows you: (1) your allowed direction from the higher-timeframe trend,
+//  (2) FVGs, (3) the nearest liquidity levels, (4) prior-day High/Low, and it
+//  ALERTS on a with-trend liquidity sweep. You still judge and execute.
+//
+//  HOW TO USE on Exness Terminal:
+//    open your XAUUSD chart -> Indicators -> Pine Editor -> paste this ->
+//    "Add to chart". Trade on 15m; the trend is read from 4H by default.
+//    Rules: trade ONLY in the background-colour direction, wait for a level,
+//    take only >=3:1, risk 1%, move to breakeven at +1R, let winners run.
+// ==========================================================================
+indicator("Gold Method Assistant", overlay=true, max_boxes_count=250, max_lines_count=120, max_labels_count=60)
+
+// ---------------- inputs ----------------
+htfTF     = input.timeframe("240", "Trend timeframe (4H default)")
+emaLen    = input.int(50,  "Trend EMA length")
+showTrend = input.bool(true,  "Colour background by trend")
+showEma   = input.bool(true,  "Plot the trend EMA")
+showFVG   = input.bool(true,  "Show Fair Value Gaps")
+showLiq   = input.bool(true,  "Show nearest swing liquidity")
+pivLen    = input.int(10,  "Swing strength", minval=3)
+showPD    = input.bool(true,  "Prior-day High/Low")
+alertsOn  = input.bool(true,  "With-trend sweep cues + alerts")
+
+// ---------------- higher-timeframe trend (non-repainting on HTF close) ----
+htfEma   = request.security(syminfo.tickerid, htfTF, ta.ema(close, emaLen),                         lookahead=barmerge.lookahead_off)
+htfRise  = request.security(syminfo.tickerid, htfTF, ta.ema(close, emaLen) > ta.ema(close, emaLen)[1], lookahead=barmerge.lookahead_off)
+htfClose = request.security(syminfo.tickerid, htfTF, close,                                          lookahead=barmerge.lookahead_off)
+bull = htfClose > htfEma and htfRise
+bear = htfClose < htfEma and not htfRise
+bias = bull ? 1 : bear ? -1 : 0
+
+bgcolor(showTrend ? (bias == 1 ? color.new(color.green, 90) : bias == -1 ? color.new(color.red, 90) : color.new(color.gray, 93)) : na, title="Trend bias")
+plot(showEma ? htfEma : na, "Trend EMA (HTF)", color=bias == 1 ? color.green : bias == -1 ? color.red : color.gray, linewidth=2)
+
+// ---------------- Fair Value Gaps (current timeframe) ---------------------
+bullFVG = low > high[2]
+bearFVG = high < low[2]
+if showFVG and bullFVG
+    box.new(bar_index[2], low, bar_index + 3, high[2], border_color=color.new(color.green, 40), bgcolor=color.new(color.green, 88))
+if showFVG and bearFVG
+    box.new(bar_index[2], low[2], bar_index + 3, high, border_color=color.new(color.red, 40), bgcolor=color.new(color.red, 88))
+
+// ---------------- nearest swing liquidity (last confirmed pivots) ---------
+var float lastPH = na
+var float lastPL = na
+ph = ta.pivothigh(pivLen, pivLen)
+pl = ta.pivotlow(pivLen, pivLen)
+lastPH := not na(ph) ? ph : lastPH
+lastPL := not na(pl) ? pl : lastPL
+
+// ---------------- prior-day High/Low (confirmed, non-repainting) ----------
+[pdh, pdl] = request.security(syminfo.tickerid, "D", [high[1], low[1]], lookahead=barmerge.lookahead_on)
+
+// draw one clean, updating horizontal line + label per level
+drawLevel(bool show, float price, color col, string txt) =>
+    var line  ln = na
+    var label lb = na
+    if barstate.islast
+        line.delete(ln)
+        label.delete(lb)
+        if show and not na(price)
+            ln := line.new(bar_index - 120, price, bar_index, price, color=col, width=1, extend=extend.right)
+            lb := label.new(bar_index + 5, price, txt + " " + str.tostring(price, format.mintick), style=label.style_label_left, color=color.new(col, 80), textcolor=col, size=size.small)
+
+drawLevel(showLiq, lastPH, color.orange, "Liq High")
+drawLevel(showLiq, lastPL, color.orange, "Liq Low")
+drawLevel(showPD,  pdh,    color.red,    "PD High")
+drawLevel(showPD,  pdl,    color.red,    "PD Low")
+
+// ---------------- with-trend liquidity sweep cues -------------------------
+sweptLow  = low  < pdl and close > pdl          // grabbed sell-side, reclaimed
+sweptHigh = high > pdh and close < pdh          // grabbed buy-side, rejected
+longCue   = alertsOn and sweptLow  and bull     // sweep low IN an uptrend -> long watch
+shortCue  = alertsOn and sweptHigh and bear     // sweep high IN a downtrend -> short watch
+
+plotshape(longCue,  "Long cue",  shape.triangleup,   location.belowbar, color.green, size=size.small)
+plotshape(shortCue, "Short cue", shape.triangledown, location.abovebar, color.red,   size=size.small)
+alertcondition(longCue,  "Gold LONG cue",  "XAUUSD swept the prior-day LOW in an uptrend -- look for a long (>=3:1).")
+alertcondition(shortCue, "Gold SHORT cue", "XAUUSD swept the prior-day HIGH in a downtrend -- look for a short (>=3:1).")
