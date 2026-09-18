@@ -23,6 +23,7 @@ from indie.algorithms import Ema
 @plot.line(title='Grabbed High')
 @plot.line(title='Pending Low')
 @plot.line(title='Grabbed Low')
+@plot.line(title='Stop / Invalidation')
 def Main(self, ema_len):
     ema = Ema.new(self.close, ema_len)
 
@@ -54,13 +55,17 @@ def Main(self, ema_len):
 
     # ---- structure trend bias: +1 bull (BUY side), -1 bear (SELL side) ----
     bias = MutSeriesF.new(0.0)
+    stop_lvl = MutSeriesF.new(nan)   # invalidation for the current setup
     bias[0] = bias[1]
+    stop_lvl[0] = stop_lvl[1]
     if sh[0] == sh[0] and sh_x[0] < 0.5 and self.close[0] > sh[0]:   # broke swing high
         sh_x[0] = 1.0
         bias[0] = 1.0
+        stop_lvl[0] = sl[0]          # long invalidation = structure low
     if sl[0] == sl[0] and sl_x[0] < 0.5 and self.close[0] < sl[0]:   # broke swing low
         sl_x[0] = 1.0
         bias[0] = -1.0
+        stop_lvl[0] = sh[0]          # short invalidation = structure high
     trend_color = color.GREEN if bias[0] > 0.5 else (color.RED if bias[0] < -0.5 else color.GRAY)
 
     # ---- pending / grabbed liquidity (persistent) ----
@@ -96,4 +101,5 @@ def Main(self, ema_len):
         plot.Line(grab_hi[0], color=color.GRAY),
         plot.Line(pend_lo[0], color=color.AQUA),
         plot.Line(grab_lo[0], color=color.BLUE),
+        plot.Line(stop_lvl[0], color=color.RED),     # your invalidation for the active setup
     )
