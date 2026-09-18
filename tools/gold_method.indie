@@ -1,11 +1,14 @@
 # indie:lang_version = 5
 # ==========================================================================
-#  GOLD METHOD ASSISTANT  (v2)  --  Exness Terminal (Indie language)
-#  Adds LIQUIDITY, coloured by state:
-#    - PENDING liquidity (not yet taken) = BRIGHT  -> a target / magnet ahead
-#    - GRABBED liquidity (already swept)  = GRAY    -> spent, price can push through
-#  Plus the trend EMA from v1 (green = longs only / red = shorts only).
-#  Order blocks come next (v3) once this compiles cleanly.
+#  GOLD METHOD ASSISTANT  (v3)  --  Exness Terminal (Indie language)
+#  FIX: grabbed liquidity now STAYS gray in place; the next pending target
+#  shows separately in bright colour.
+#    - PENDING high  = ORANGE (untapped target above)
+#    - GRABBED high   = GRAY   (already taken, frozen where it was swept)
+#    - PENDING low   = AQUA   (untapped target below)
+#    - GRABBED low    = GRAY
+#  Trend EMA: green = longs only / red = shorts only.
+#  (Next: BUY/SELL break markers, and optional structure-based trend.)
 # ==========================================================================
 from math import nan
 from indie import indicator, param, plot, color, MutSeriesF
@@ -15,8 +18,10 @@ from indie.algorithms import Ema
 @indicator('Gold Method Assistant', overlay_main_pane=True)
 @param.int('trend_len', default=200, min=5, title='Trend EMA length')
 @plot.line(title='Trend EMA')
-@plot.line(title='Liquidity High')
-@plot.line(title='Liquidity Low')
+@plot.line(title='Pending High')
+@plot.line(title='Grabbed High')
+@plot.line(title='Pending Low')
+@plot.line(title='Grabbed Low')
 def Main(self, trend_len):
     trend = Ema.new(self.close, trend_len)
     up = self.close[0] > trend[0]
@@ -32,33 +37,38 @@ def Main(self, trend_len):
              lc < self.low[3] and lc < self.low[4] and lc < self.low[6] and
              lc < self.low[7] and lc < self.low[8] and lc < self.low[9] and lc < self.low[10])
 
-    # ---- carry nearest swing HIGH + grabbed state ----
-    liq_hi = MutSeriesF.new(nan)
-    hi_grab = MutSeriesF.new(0.0)
-    liq_hi[0] = liq_hi[1]
-    hi_grab[0] = hi_grab[1]
+    # ---- persistent pending + grabbed HIGH ----
+    pend_hi = MutSeriesF.new(nan)
+    grab_hi = MutSeriesF.new(nan)
+    pend_hi[0] = pend_hi[1]
+    grab_hi[0] = grab_hi[1]
     if is_ph:
-        liq_hi[0] = hc
-        hi_grab[0] = 0.0
-    if liq_hi[0] == liq_hi[0] and self.high[0] > liq_hi[0]:   # nan-safe: price took the high
-        hi_grab[0] = 1.0
+        if self.close[0] < hc:          # a fresh high still above price -> target
+            pend_hi[0] = hc
+        else:                            # already below price -> already taken
+            grab_hi[0] = hc
+    if pend_hi[0] == pend_hi[0] and self.high[0] > pend_hi[0]:   # target just taken
+        grab_hi[0] = pend_hi[0]
+        pend_hi[0] = nan
 
-    # ---- carry nearest swing LOW + grabbed state ----
-    liq_lo = MutSeriesF.new(nan)
-    lo_grab = MutSeriesF.new(0.0)
-    liq_lo[0] = liq_lo[1]
-    lo_grab[0] = lo_grab[1]
+    # ---- persistent pending + grabbed LOW ----
+    pend_lo = MutSeriesF.new(nan)
+    grab_lo = MutSeriesF.new(nan)
+    pend_lo[0] = pend_lo[1]
+    grab_lo[0] = grab_lo[1]
     if is_pl:
-        liq_lo[0] = lc
-        lo_grab[0] = 0.0
-    if liq_lo[0] == liq_lo[0] and self.low[0] < liq_lo[0]:
-        lo_grab[0] = 1.0
-
-    hi_col = color.GRAY if hi_grab[0] > 0.5 else color.ORANGE   # pending high = orange
-    lo_col = color.GRAY if lo_grab[0] > 0.5 else color.AQUA     # pending low  = aqua
+        if self.close[0] > lc:
+            pend_lo[0] = lc
+        else:
+            grab_lo[0] = lc
+    if pend_lo[0] == pend_lo[0] and self.low[0] < pend_lo[0]:
+        grab_lo[0] = pend_lo[0]
+        pend_lo[0] = nan
 
     return (
         plot.Line(trend[0], color=trend_color),
-        plot.Line(liq_hi[0], color=hi_col),
-        plot.Line(liq_lo[0], color=lo_col),
+        plot.Line(pend_hi[0], color=color.ORANGE),
+        plot.Line(grab_hi[0], color=color.GRAY),
+        plot.Line(pend_lo[0], color=color.AQUA),
+        plot.Line(grab_lo[0], color=color.GRAY),
     )
