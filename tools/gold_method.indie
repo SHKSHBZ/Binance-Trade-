@@ -1,14 +1,15 @@
 # indie:lang_version = 5
 # ==========================================================================
-#  GOLD METHOD ASSISTANT  (v3)  --  Exness Terminal (Indie language)
-#  FIX: grabbed liquidity now STAYS gray in place; the next pending target
-#  shows separately in bright colour.
-#    - PENDING high  = ORANGE (untapped target above)
-#    - GRABBED high   = GRAY   (already taken, frozen where it was swept)
-#    - PENDING low   = AQUA   (untapped target below)
-#    - GRABBED low    = GRAY
-#  Trend EMA: green = longs only / red = shorts only.
-#  (Next: BUY/SELL break markers, and optional structure-based trend.)
+#  GOLD METHOD ASSISTANT  (v5)  --  Exness Terminal (Indie language)
+#  NEW: STRUCTURE-based trend (BOS/CHoCH) instead of the laggy EMA.
+#    - the trend line turns GREEN the moment price BREAKS the last swing HIGH
+#      (bullish break of structure)  -> BUY side / longs only
+#    - it turns RED the moment price BREAKS the last swing LOW
+#      (bearish break of structure)  -> SELL side / shorts only
+#    The colour flips exactly AT the break (no EMA lag). That flip is your
+#    structure BUY/SELL signal.
+#  Kept: pending (bright) vs grabbed (gray/blue) liquidity levels.
+#  (Next: explicit BUY/SELL arrow markers + labels.)
 # ==========================================================================
 from math import nan
 from indie import indicator, param, plot, color, MutSeriesF
@@ -16,16 +17,14 @@ from indie.algorithms import Ema
 
 
 @indicator('Gold Method Assistant', overlay_main_pane=True)
-@param.int('trend_len', default=200, min=5, title='Trend EMA length')
-@plot.line(title='Trend EMA')
+@param.int('ema_len', default=50, min=2, title='EMA (visual anchor only)')
+@plot.line(title='Structure Trend')
 @plot.line(title='Pending High')
 @plot.line(title='Grabbed High')
 @plot.line(title='Pending Low')
 @plot.line(title='Grabbed Low')
-def Main(self, trend_len):
-    trend = Ema.new(self.close, trend_len)
-    up = self.close[0] > trend[0]
-    trend_color = color.GREEN if up else color.RED
+def Main(self, ema_len):
+    ema = Ema.new(self.close, ema_len)
 
     # ---- swing pivots, strength 5 (confirmed 5 bars back) ----
     hc = self.high[5]
@@ -37,21 +36,47 @@ def Main(self, trend_len):
              lc < self.low[3] and lc < self.low[4] and lc < self.low[6] and
              lc < self.low[7] and lc < self.low[8] and lc < self.low[9] and lc < self.low[10])
 
-    # ---- persistent pending + grabbed HIGH ----
+    # ---- last swing high/low + crossed flags (structure) ----
+    sh = MutSeriesF.new(nan)
+    sl = MutSeriesF.new(nan)
+    sh_x = MutSeriesF.new(0.0)
+    sl_x = MutSeriesF.new(0.0)
+    sh[0] = sh[1]
+    sl[0] = sl[1]
+    sh_x[0] = sh_x[1]
+    sl_x[0] = sl_x[1]
+    if is_ph:
+        sh[0] = hc
+        sh_x[0] = 0.0
+    if is_pl:
+        sl[0] = lc
+        sl_x[0] = 0.0
+
+    # ---- structure trend bias: +1 bull (BUY side), -1 bear (SELL side) ----
+    bias = MutSeriesF.new(0.0)
+    bias[0] = bias[1]
+    if sh[0] == sh[0] and sh_x[0] < 0.5 and self.close[0] > sh[0]:   # broke swing high
+        sh_x[0] = 1.0
+        bias[0] = 1.0
+    if sl[0] == sl[0] and sl_x[0] < 0.5 and self.close[0] < sl[0]:   # broke swing low
+        sl_x[0] = 1.0
+        bias[0] = -1.0
+    trend_color = color.GREEN if bias[0] > 0.5 else (color.RED if bias[0] < -0.5 else color.GRAY)
+
+    # ---- pending / grabbed liquidity (persistent) ----
     pend_hi = MutSeriesF.new(nan)
     grab_hi = MutSeriesF.new(nan)
     pend_hi[0] = pend_hi[1]
     grab_hi[0] = grab_hi[1]
     if is_ph:
-        if self.close[0] < hc:          # a fresh high still above price -> target
+        if self.close[0] < hc:
             pend_hi[0] = hc
-        else:                            # already below price -> already taken
+        else:
             grab_hi[0] = hc
-    if pend_hi[0] == pend_hi[0] and self.high[0] > pend_hi[0]:   # target just taken
+    if pend_hi[0] == pend_hi[0] and self.high[0] > pend_hi[0]:
         grab_hi[0] = pend_hi[0]
         pend_hi[0] = nan
 
-    # ---- persistent pending + grabbed LOW ----
     pend_lo = MutSeriesF.new(nan)
     grab_lo = MutSeriesF.new(nan)
     pend_lo[0] = pend_lo[1]
@@ -66,9 +91,9 @@ def Main(self, trend_len):
         pend_lo[0] = nan
 
     return (
-        plot.Line(trend[0], color=trend_color),
-        plot.Line(pend_hi[0], color=color.ORANGE),   # pending high  = orange (target above)
-        plot.Line(grab_hi[0], color=color.GRAY),      # grabbed high  = gray  (spent)
-        plot.Line(pend_lo[0], color=color.AQUA),      # pending low   = aqua  (target below)
-        plot.Line(grab_lo[0], color=color.BLUE),      # grabbed low   = blue  (spent, distinct from grabbed high)
+        plot.Line(ema[0], color=trend_color),       # line coloured by STRUCTURE (non-laggy)
+        plot.Line(pend_hi[0], color=color.ORANGE),
+        plot.Line(grab_hi[0], color=color.GRAY),
+        plot.Line(pend_lo[0], color=color.AQUA),
+        plot.Line(grab_lo[0], color=color.BLUE),
     )
