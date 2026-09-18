@@ -24,6 +24,8 @@ from indie.algorithms import Ema
 @plot.line(title='Pending Low')
 @plot.line(title='Grabbed Low')
 @plot.line(title='Stop / Invalidation')
+@plot.line(title='Bull FVG (buy dip)')
+@plot.line(title='Bear FVG (sell rally)')
 def Main(self, ema_len):
     ema = Ema.new(self.close, ema_len)
 
@@ -95,6 +97,22 @@ def Main(self, ema_len):
         grab_lo[0] = pend_lo[0]
         pend_lo[0] = nan
 
+    # ---- nearest UNFILLED FVG (50%/CE entry level) ----
+    # bullish FVG: low[0] > high[2]  -> buy-the-dip level; clear once tapped
+    fvg_bull = MutSeriesF.new(nan)
+    fvg_bull[0] = fvg_bull[1]
+    if self.low[0] > self.high[2]:
+        fvg_bull[0] = (self.high[2] + self.low[0]) / 2.0
+    if fvg_bull[0] == fvg_bull[0] and self.low[0] <= fvg_bull[0]:
+        fvg_bull[0] = nan
+    # bearish FVG: high[0] < low[2]  -> sell-the-rally level; clear once tapped
+    fvg_bear = MutSeriesF.new(nan)
+    fvg_bear[0] = fvg_bear[1]
+    if self.high[0] < self.low[2]:
+        fvg_bear[0] = (self.high[0] + self.low[2]) / 2.0
+    if fvg_bear[0] == fvg_bear[0] and self.high[0] >= fvg_bear[0]:
+        fvg_bear[0] = nan
+
     return (
         plot.Line(ema[0], color=trend_color),       # line coloured by STRUCTURE (non-laggy)
         plot.Line(pend_hi[0], color=color.ORANGE),
@@ -102,4 +120,6 @@ def Main(self, ema_len):
         plot.Line(pend_lo[0], color=color.AQUA),
         plot.Line(grab_lo[0], color=color.BLUE),
         plot.Line(stop_lvl[0], color=color.RED),     # your invalidation for the active setup
+        plot.Line(fvg_bull[0], color=color.GREEN),   # nearest bullish FVG entry (buy dip, in an uptrend)
+        plot.Line(fvg_bear[0], color=color.RED),     # nearest bearish FVG entry (sell rally, in a downtrend)
     )
