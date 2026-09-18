@@ -1,31 +1,64 @@
 # indie:lang_version = 5
 # ==========================================================================
-#  GOLD METHOD ASSISTANT  (v1 core)  --  Exness Terminal (Indie language)
-#  Step 1: the TREND FILTER = your allowed direction.
-#    - trend EMA turns GREEN when price is above it  -> longs only
-#    - trend EMA turns RED   when price is below it   -> shorts only
-#  Trade ONLY in the trend-EMA colour direction. Next versions add FVGs,
-#  liquidity levels, prior-day High/Low, and with-trend sweep alerts.
-#
-#  Paste into: Exness Terminal -> chart -> Indicators -> code editor -> compile.
+#  GOLD METHOD ASSISTANT  (v2)  --  Exness Terminal (Indie language)
+#  Adds LIQUIDITY, coloured by state:
+#    - PENDING liquidity (not yet taken) = BRIGHT  -> a target / magnet ahead
+#    - GRABBED liquidity (already swept)  = GRAY    -> spent, price can push through
+#  Plus the trend EMA from v1 (green = longs only / red = shorts only).
+#  Order blocks come next (v3) once this compiles cleanly.
 # ==========================================================================
+from math import nan
 from indie import indicator, param, plot, color, MutSeriesF
 from indie.algorithms import Ema
 
 
 @indicator('Gold Method Assistant', overlay_main_pane=True)
 @param.int('trend_len', default=200, min=5, title='Trend EMA length')
-@param.int('fast_len', default=50, min=2, title='Fast EMA length')
 @plot.line(title='Trend EMA')
-@plot.line(title='Fast EMA', color=color.GRAY)
-def Main(self, trend_len, fast_len):
+@plot.line(title='Liquidity High')
+@plot.line(title='Liquidity Low')
+def Main(self, trend_len):
     trend = Ema.new(self.close, trend_len)
-    fast = Ema.new(self.close, fast_len)
-
     up = self.close[0] > trend[0]
     trend_color = color.GREEN if up else color.RED
 
+    # ---- swing pivots, strength 5 (confirmed 5 bars back) ----
+    hc = self.high[5]
+    is_ph = (hc > self.high[0] and hc > self.high[1] and hc > self.high[2] and
+             hc > self.high[3] and hc > self.high[4] and hc > self.high[6] and
+             hc > self.high[7] and hc > self.high[8] and hc > self.high[9] and hc > self.high[10])
+    lc = self.low[5]
+    is_pl = (lc < self.low[0] and lc < self.low[1] and lc < self.low[2] and
+             lc < self.low[3] and lc < self.low[4] and lc < self.low[6] and
+             lc < self.low[7] and lc < self.low[8] and lc < self.low[9] and lc < self.low[10])
+
+    # ---- carry nearest swing HIGH + grabbed state ----
+    liq_hi = MutSeriesF.new(nan)
+    hi_grab = MutSeriesF.new(0.0)
+    liq_hi[0] = liq_hi[1]
+    hi_grab[0] = hi_grab[1]
+    if is_ph:
+        liq_hi[0] = hc
+        hi_grab[0] = 0.0
+    if liq_hi[0] == liq_hi[0] and self.high[0] > liq_hi[0]:   # nan-safe: price took the high
+        hi_grab[0] = 1.0
+
+    # ---- carry nearest swing LOW + grabbed state ----
+    liq_lo = MutSeriesF.new(nan)
+    lo_grab = MutSeriesF.new(0.0)
+    liq_lo[0] = liq_lo[1]
+    lo_grab[0] = lo_grab[1]
+    if is_pl:
+        liq_lo[0] = lc
+        lo_grab[0] = 0.0
+    if liq_lo[0] == liq_lo[0] and self.low[0] < liq_lo[0]:
+        lo_grab[0] = 1.0
+
+    hi_col = color.GRAY if hi_grab[0] > 0.5 else color.ORANGE   # pending high = orange
+    lo_col = color.GRAY if lo_grab[0] > 0.5 else color.AQUA     # pending low  = aqua
+
     return (
         plot.Line(trend[0], color=trend_color),
-        plot.Line(fast[0], color=color.GRAY),
+        plot.Line(liq_hi[0], color=hi_col),
+        plot.Line(liq_lo[0], color=lo_col),
     )
