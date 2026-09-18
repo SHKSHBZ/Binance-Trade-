@@ -1,0 +1,31 @@
+# indie:lang_version = 5
+# ==========================================================================
+#  GOLD METHOD ASSISTANT  (v1 core)  --  Exness Terminal (Indie language)
+#  Step 1: the TREND FILTER = your allowed direction.
+#    - trend EMA turns GREEN when price is above it  -> longs only
+#    - trend EMA turns RED   when price is below it   -> shorts only
+#  Trade ONLY in the trend-EMA colour direction. Next versions add FVGs,
+#  liquidity levels, prior-day High/Low, and with-trend sweep alerts.
+#
+#  Paste into: Exness Terminal -> chart -> Indicators -> code editor -> compile.
+# ==========================================================================
+from indie import indicator, param, plot, color, MutSeriesF
+from indie.algorithms import Ema
+
+
+@indicator('Gold Method Assistant', overlay_main_pane=True)
+@param.int('trend_len', default=200, min=5, title='Trend EMA length')
+@param.int('fast_len', default=50, min=2, title='Fast EMA length')
+@plot.line(title='Trend EMA')
+@plot.line(title='Fast EMA', color=color.GRAY)
+def Main(self, trend_len, fast_len):
+    trend = Ema.new(self.close, trend_len)
+    fast = Ema.new(self.close, fast_len)
+
+    up = self.close[0] > trend[0]
+    trend_color = color.GREEN if up else color.RED
+
+    return (
+        plot.Line(trend[0], color=trend_color),
+        plot.Line(fast[0], color=color.GRAY),
+    )
