@@ -104,3 +104,68 @@ gold-specific mechanism story becomes credible. If not, the candidate is dead.
 - Gold + London + nearest target: +0.076 OOS but not significant.
 - BTC + same config: **−0.108**, significant.
 - Status: **unconfirmed / probably noise**, pending an FX or silver test.
+
+---
+
+# SESSION RE-TEST — the "active window" hypothesis, tested and REJECTED
+
+Measuring gold M30 volatility/volume by hour (2024-2026 UTC) showed the real
+activity peak is the **London+NY overlap 13:00-16:00** (1.60x the day-average
+range, ~2x the volume), while **London 07-13 is exactly 1.00x** — dead average.
+The originally-tested `London 07-10` window is one of the QUIETEST parts of the
+day. Hypothesis: the session filter was mis-specified and the true active
+window (12:00-16:00) should do better.
+
+**It does not. It is decisively worse.**
+
+## Gold, K=1.0 WAIT=12, nearest-pool target
+
+| Session | TRAIN 22-06..24-12 | TEST 25-01..26-09 (unseen) |
+|---|---|---|
+| Asia 00-04 | −0.141 (n=434) | −0.270 (n=315) |
+| **London 07-10** | **+0.077** (n=422) | **+0.076** (n=231) |
+| London 07-13 | +0.044 (n=808) | −0.089 (n=459) |
+| **ACTIVE 12-16** | +0.036 (n=643) | **−0.109** (n=409), P(≤0)=90.8% |
+| Overlap 13-16 | −0.064 (n=466) | +0.043 (n=329) |
+| NY 16-21 | −0.112 (n=281) | −0.185 (n=226) |
+| no filter | −0.026 (n=1614) | −0.107 (n=1078) |
+
+## Grid, unseen period — the active window fails everywhere
+
+`ACTIVE 12-16` is negative in **all 12 K x WAIT cells** out-of-sample
+(−0.100 to −0.232). There is no plateau, no corner, nothing. `Overlap 13-16`
+inverts sign between the two periods (−0.03..−0.09 train, +0.04 test) — the
+classic noise signature. `London 07-10` remains the only window positive in
+BOTH periods across the K=0.5/1.0 plateau (6/6 cells).
+
+## Why the quiet window beats the loud one — mechanism check
+
+A trap/reclaim model needs a sweep to FAIL. Measured directly: fraction of
+swept levels reclaimed within 3h, gold 2022-2026 (n=8,547 sweeps):
+
+| Session | sweeps | reverts | continues |
+|---|---|---|---|
+| London 07-10 | 1,166 | **86.7%** | 13.3% |
+| London 07-13 | 2,641 | 86.0% | 14.0% |
+| Asia 00-07 | 2,435 | 84.6% | 15.4% |
+| ACTIVE 12-16 | 2,769 | 82.6% | 17.4% |
+| Overlap 13-16 | 2,011 | **82.5%** | 17.5% |
+| NY 16-21 | 1,049 | 81.7% | 18.3% |
+| Late 21-24 | 411 | 79.8% | 20.2% |
+
+The gradient runs in the predicted direction — sweeps in high-volatility hours
+are ~30% more likely to become real breakouts (17.5% vs 13.3% continuation) —
+so "quiet hours favour reversal models" is a genuine effect. **But the gap is
+only 4.2 percentage points, nowhere near enough to explain a +0.076 vs −0.109
+expR swing.** The mechanism is real and small; the performance gap is large.
+That difference is unexplained, and unexplained gaps are usually noise.
+
+## Net effect on the candidate's status
+
+**Weaker, not stronger.** The correction removed the one explanation that could
+have made London 07-10 look like a mis-specification worth fixing; instead it
+confirms 07-10 is an isolated favourable window whose advantage over the
+genuinely active hours has no proportionate mechanism behind it. Combined with
+P(expR≤0)=33% and the failed BTC replication, the candidate stays
+**unconfirmed / probably noise**. An FX or silver test is still the only thing
+that would settle it.
