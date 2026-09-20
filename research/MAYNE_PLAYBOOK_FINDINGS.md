@@ -76,3 +76,20 @@ lives in discretion + asymmetric payoff, not in a mechanical rule.
 python3 mayne_playbook.py
 # run(ltf_file, start, end, target_mode="ext"|"fixed", rr_fixed=3.0)
 ```
+
+## Stop-out analysis — the stops were too tight (valuable insight)
+
+Of the stop-outs on the H4→M15 version: **GOLD 65% and BTC 73% would have
+reached the full target** after being stopped; 90-97% came back to at least
+breakeven within ~2-3 days. So the stops were being noise-hit ("stop hunted")
+and price then went the intended way.
+
+Fixing it (wider stop + trailing exit) improves results dramatically but does
+NOT reach profit:
+- Wider stop alone: win rate 16% -> 45%, but proportionally worse RR -> still negative.
+- Wider stop (3x) + ATR trailing: GOLD -48% -> -4.5% (edge 39%), BTC -43% -> ~-8%.
+
+**Conclusion: good risk management (wide stop + let winners run) takes a
+coin-flip entry from deeply negative up to ~breakeven, but cannot cross into
+profit. The final step (breakeven -> profit) requires a >50% entry, which is
+not mechanically available -- it must come from discretionary entry selection.**
