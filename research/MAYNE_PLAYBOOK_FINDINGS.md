@@ -93,3 +93,23 @@ NOT reach profit:
 coin-flip entry from deeply negative up to ~breakeven, but cannot cross into
 profit. The final step (breakeven -> profit) requires a >50% entry, which is
 not mechanically available -- it must come from discretionary entry selection.**
+
+## Correction + walk-forward on stop-width x trail
+
+The first wider-stop test was constructed wrong: holding the target at a fixed
+PRICE while widening the stop forces RR to collapse, so the "no free lunch"
+conclusion drawn from it was not valid. Re-ran properly as a joint grid
+(stop_mult x trail_atr, 36 cells) where the trail sets the reward.
+
+Full-sample best: GOLD stop12x/trail16ATR +11.0% (expR +0.27, edge 83%, n=29);
+BTC stop12x/trail16ATR +7.5% (expR +0.15, edge 73%, n=44). Both at the grid
+corner = effectively "no structure stop, loose trail does all exits".
+
+Walk-forward (pick params on early years, test on unseen later years):
+- GOLD pick stop6x/trail12 -> IS expR +0.081, OOS expR +0.079 (+2.3%, edge 63%, n=19). Held, but trivial / inside noise.
+- BTC pick stop3x/trail16 -> IS expR +0.302, OOS expR -0.905 (-20.3%, edge 0%). Collapsed = pure fit.
+- OOS across all 36 cells: GOLD mean expR -0.202 (10/36 positive); BTC mean -0.381 (2/36 positive).
+
+**Conclusion: widening the stop paired with a trail is the correct construction
+and removes the noise-stop bleed (-48% -> ~0), but it does not produce an edge
+that survives out-of-sample.**
