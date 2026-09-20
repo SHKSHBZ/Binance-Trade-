@@ -41,6 +41,27 @@ DAILY BOS+OB setup, which is inherently rare: ~10-13 in years.)
    be personalized." So it was never a mechanical system — the edge, if any, is in
    the trader's POI/confirmation judgment, which a backtest cannot capture.
 
+## DECISIVE UPDATE — H4 HTF (bigger sample) → clearly NEGATIVE
+
+The Daily-HTF result above was only 10-13 trades (untestable). Switching HTF to
+**4H → M15 execution** produces a real sample and settles it:
+
+| Instrument | Trades | Exit modes tried | Return | Edge |
+|---|---|---|---|---|
+| GOLD (H4→M15) | 44 | trail 4/2.5 ATR, fixed 3R/2R | −48% to −56% | 0% |
+| BTC (H4→M15) | 58 | same | −29% to −54% | 0% |
+
+Every exit mode, both instruments, clearly negative, edge 0%, win rates below
+breakeven. **The Daily version's apparent +28%/+7.9% was 1-2 outliers on a tiny
+sample; with 44-58 trades the edge evaporates — the signature of a false
+positive.** Also tested: lenient entry (gold 13→22 trades) made it *worse* (the
+extra setups were coin flips, not hidden winners); a wide ATR trailing stop was
+the only lever that helped marginally but could not create an edge.
+
+**Verdict upgraded: mechanically DISPROVEN on gold and BTC, not merely
+inconclusive.** Quality entries + let-winners-run remain the only sound
+principles; the strategy's structure does not predict direction.
+
 ## Bottom line
 
 The Mayne playbook is a legitimate, well-structured SMC swing framework — and
