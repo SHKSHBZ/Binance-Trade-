@@ -126,3 +126,57 @@ still +0.174, about half the reported figure.*
 This is the best current estimate for the Mayne playbook on gold: a small
 positive expectancy that does not clear significance and is largely consumed
 by spread.
+
+---
+
+# PART 3 — EXACT replica (full source received): the H4 merge WAS the edge
+
+The trader shared `smc_utils.py` and `state_machine.py`. `mayne_exact_replica.py`
+reproduces their engine **exactly**: n=267, win 43.8%, expR +0.315, +84.0R —
+identical to their log. So the causal numbers below are definitive.
+
+| Version | n | win | expR | P(expR<=0) |
+|---|---|---|---|---|
+| A — exactly as written | 267 | 43.8% | **+0.315** | 0.0% |
+| B — fix H4 merge timing ONLY | 171 | 27.5% | **−0.175** | 95.9% |
+| C — fix swing confirmation ONLY | 299 | 43.5% | +0.304 | 0.0% |
+| D — both fixed (fully causal) | 209 | 28.7% | **−0.139** | 92.0% |
+| D + 0.25pt spread | 209 | 28.7% | **−0.170** | 96.2% |
+
+**The H4 merge alone accounts for the entire edge.** Swing confirmation is
+near-irrelevant (C barely moves) because `find_msb` already applies `.shift(1)`
+and the levels are ffilled.
+
+## Mechanism
+`identify_order_blocks` sets the OB at the bar where the H4 **close** breaks the
+swing. `merge_asof(direction='backward')` then propagates that OB/bias to every
+M15 bar from the **start** of that H4 candle — up to 4h before it closed. The
+engine therefore enters knowing the H4 breakout succeeds, hours ahead of time.
+
+## Confirmed bugs in the shared source
+1. `state_machine.py:22` — `merge_asof(direction='backward')` on H4→M15 (the edge).
+2. `smc_utils.py:15` — `rolling(window=11, center=True)` marks swings using 5
+   future candles; stamped at the pivot bar and ffilled from there.
+3. `state_machine.py:32` — `find_swings(ltf_merged)` **overwrites** the merged HTF
+   `last_swing_high`/`last_swing_low` with M15 values, so `htf_swing_highs`
+   (line 54) is actually M15 data.
+4. `state_machine.py:110/134` — the "extend TP to HTF external liquidity" branch
+   can never fire (for a bullish MSB the swing high sits below entry), which is
+   why all 267 trades are exactly 2.00 RR. Dead code.
+5. `process_htf` computes `midpoint` but it is never added to `htf_cols`, so the
+   engine has **no premium/discount filter** — confirming Part 1: that gate was
+   Claude's addition, not the trader's.
+
+## Fix
+```python
+ctx = self.htf_df[htf_cols].copy()
+ctx.index = ctx.index + pd.Timedelta(hours=4)   # valid only AFTER the H4 bar closes
+ltf_merged = pd.merge_asof(self.ltf_df, ctx, left_index=True,
+                           right_index=True, direction='backward')
+```
+
+## FINAL STATUS — Mayne playbook on gold
+Causal, exact engine: **expR −0.139 (−0.170 with spread), P(expR<=0) = 96%.**
+No edge. Claude's independently de-filtered build gave +0.112 pre-cost
+(P<=0 = 10.7%, also not significant). Both agree there is no demonstrable edge
+once causality is enforced — the earlier +0.315 was look-ahead.
