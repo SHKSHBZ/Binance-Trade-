@@ -1,0 +1,57 @@
+# Trader Mayne "Structure & OTE" Playbook — backtested, INCONCLUSIVE (too few setups)
+
+Faithful causal mechanization: HTF Daily BOS → Order-Block POI in premium/
+discount → LTF sweep+reclaim entry inside the POI → external-liquidity target,
+min 2:1. Code: `mayne_playbook.py`. Tested on gold and BTC.
+
+## Results
+
+| Instrument | Target | Trades | Win | avgRR | Return | expR | Edge |
+|---|---|---|---|---|---|---|---|
+| GOLD | external liq | 13 | 8% | 19.7 | +28.8% | +2.25 | 74% |
+| GOLD | fixed 3R | 13 | 23% | 3.0 | −6.9% | −0.52 | 16% |
+| GOLD | fixed 2R | 13 | 23% | 2.0 | −9.8% | −0.75 | 1% |
+| BTC | external liq | 10 | 20% | 17.6 | +7.9% | +0.84 | 72% |
+| BTC | fixed 3R | 10 | 30% | 3.0 | −0.1% | +0.00 | 52% |
+| BTC | fixed 2R | 10 | 30% | 2.0 | −3.0% | −0.30 | 28% |
+
+(Lower execution timeframes 30m/15m did not add trades — the bottleneck is the
+DAILY BOS+OB setup, which is inherently rare: ~10-13 in years.)
+
+## Honest verdict — inconclusive, not proven, not disproven
+
+1. **Sample far too small to judge.** 10-13 setups over multiple years on ONE
+   instrument cannot separate skill from luck (edge ~72-74%, below the 95% bar).
+   This is a DAILY-HTF SWING model by design — it produces few, large trades. To
+   test it properly you need a **basket of instruments** (crypto + FX + indices +
+   commodities) to accumulate a few hundred setups. On gold+BTC alone it is
+   effectively untestable.
+
+2. **The apparent gains are outlier-driven.** The positive "external liquidity"
+   returns (+28.8% gold, +7.9% BTC) come almost entirely from 1-2 trades with
+   huge RR (win rate 8-20%). Same fragile profile as the Trident test.
+
+3. **At realistic fixed targets (2R/3R) it is breakeven-to-negative** — i.e. the
+   ENTRY itself carries no directional edge (consistent with every other setup
+   tested). Any profit is purely the asymmetric "let it run to external
+   liquidity" target paying off on the rare winner.
+
+4. **The author agrees it's discretionary.** The playbook's own Pros/Cons: entries
+   "need some discretion," it "requires backtesting and live practice," and "must
+   be personalized." So it was never a mechanical system — the edge, if any, is in
+   the trader's POI/confirmation judgment, which a backtest cannot capture.
+
+## Bottom line
+
+The Mayne playbook is a legitimate, well-structured SMC swing framework — and
+its low-win-rate / big-runner / few-trades profile is by design. But on a single
+instrument it produces too few setups to validate, and mechanically its entry is
+a coin flip (breakeven at fixed RR); its returns depend on rare outsized winners.
+Same conclusion as the whole research program: the structure is sound, the edge
+lives in discretion + asymmetric payoff, not in a mechanical rule.
+
+## Run
+```
+python3 mayne_playbook.py
+# run(ltf_file, start, end, target_mode="ext"|"fixed", rr_fixed=3.0)
+```
