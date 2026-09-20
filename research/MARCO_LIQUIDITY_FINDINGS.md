@@ -65,3 +65,42 @@ with (a) a real sample, (b) an out-of-sample hold, (c) a parameter plateau, and
 python3 -c "import marco_liquidity as m; print(m.run(K=1.0, sess=(7,10), tgt_mode='near')[0].mean())"
 # run(ltf_file, start, end, P, K, WAIT, sess, eq_only, spread, tgt_mode, fixed_rr)
 ```
+
+---
+
+# INDEPENDENT TEST ON BTC — did NOT replicate
+
+The playbook claims the model is "Fractal... Fits Any Asset." Ran the exact
+gold-winning config on BTC 15m (2023-2026), cost 0.02% round trip.
+
+| BTC session | n | win | expR | P(<=0) |
+|---|---|---|---|---|
+| **London 07-10 (the gold config)** | 731 | 30.2% | **−0.108** | **95.0%** |
+| NY 13-16 | 1076 | 36.4% | −0.040 | 79.4% |
+| Asia 00-04 | 848 | 33.8% | −0.009 | 55.8% |
+| no session filter | 3083 | 32.8% | −0.060 | 97.3% |
+
+The whole London plateau is negative on BTC — all 9 K x WAIT cells between
+−0.070 and −0.121. Zero-cost reference also negative (−0.035). No trace of the
+gold pattern.
+
+## Verdict on the candidate
+**Most likely noise.** The gold London result was never significant
+(P(expR<=0) = 33.5%) and was one favourable cell out of ~20 searched; it then
+failed the first independent asset test, on a decent sample, significantly.
+
+*Fair caveat:* BTC has no institutional London session (no LBMA fix, no metals
+desks, 24/7 market), so it is not a perfect analogue for a gold/London
+mechanism. Weight this lightly — 1-in-3 noise odds plus a failed replication is
+mostly just noise.
+
+## The discriminating test
+An instrument that DOES have a real London session: **EURUSD, GBPUSD or silver
+(XAGUSD)**, M15/M30 from MT5. If the London edge appears there, the
+gold-specific mechanism story becomes credible. If not, the candidate is dead.
+
+## Running scoreboard for this playbook
+- As specified, no session filter: **negative**, large sample (n=1345-3083, both assets).
+- Gold + London + nearest target: +0.076 OOS but not significant.
+- BTC + same config: **−0.108**, significant.
+- Status: **unconfirmed / probably noise**, pending an FX or silver test.

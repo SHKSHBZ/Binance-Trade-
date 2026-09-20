@@ -53,7 +53,7 @@ def build_levels(m30, P=3, K=2.0, eq_only=False, eq_tol=0.0008):
 
 def run(ltf_file="XAUUSD_15m.csv", start="2022-06-24", end="2026-09-01",
         P=3, K=2.0, WAIT=12, sess=(13,16), eq_only=False, spread=0.25, buf=0.0002,
-        tgt_mode="near", fixed_rr=2.0):
+        tgt_mode="near", fixed_rr=2.0, spread_frac=None):
     ltf=load_ohlcv(ltf_file,start,end)
     m30=ltf.resample("30min").agg(open=("open","first"),high=("high","max"),
                                   low=("low","min"),close=("close","last")).dropna()
@@ -88,7 +88,7 @@ def run(ltf_file="XAUUSD_15m.csv", start="2022-06-24", end="2026-09-01",
                             else: tg=None
                         else: tg=None
                         if tg is not None:
-                            r=_sim(-1,e,s,tg,H,L,C,i,n,spread)
+                            r=_sim(-1,e,s,tg,H,L,C,i,n,(e*spread_frac if spread_frac else spread))
                             trades.append(r); busy=r[1]
                     armed=None
                 else: armed=(li,ext,dl)
@@ -104,7 +104,7 @@ def run(ltf_file="XAUUSD_15m.csv", start="2022-06-24", end="2026-09-01",
                             else: tg=None
                         else: tg=None
                         if tg is not None:
-                            r=_sim(1,e,s,tg,H,L,C,i,n,spread)
+                            r=_sim(1,e,s,tg,H,L,C,i,n,(e*spread_frac if spread_frac else spread))
                             trades.append(r); busy=r[1]
                     armed=None
                 else: armed=(li,ext,dl)
