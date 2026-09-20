@@ -257,3 +257,79 @@ collapses under walk-forward selection or is indistinguishable from random.
 **Status unchanged: no demonstrated edge on gold.** Only the original
 tight-stop / fixed-pool London 07-10 cell still stands, at P(expR<=0)=33%,
 already failed on BTC. An FX or silver test remains the only thing that settles it.
+
+---
+
+# ENTRY-TIMING RE-TEST — "enter after the stops are hunted" (trader's idea)
+
+Trader's argument: widening the stop is the wrong lever (it shrinks RR).
+Instead move the ENTRY deeper into the hunt — a better fill shrinks risk AND
+extends reward. Correct reasoning, and a genuinely different lever. Tested as:
+- wait for a deeper hunt (>= 0.5 / 1.0 ATR past the level before entering)
+- delay 4-8 bars after the reclaim
+- rest a LIMIT back at the level / 50% / 100% into the hunt zone
+
+## A 2.0R BUG, caught before reporting
+
+First run showed "LIMIT at the wick" = **+1.949 expR, P(<=0)=0.0%**. Not real:
+
+1. **Sub-spread stop.** Entry at the wick with the stop 0.02% beyond it = a
+   **$0.80 stop on $4,000 gold** (spread alone is $0.25). Every R is measured
+   against that, so one winner reaching a $30 target books **+37R**. This is the
+   same artifact that faked Trident's +229R trade.
+2. **Entry bar skipped.** The sim checked the stop from the bar AFTER the fill.
+   But a limit at the sweep extreme fills on a bar that is reaching that
+   extreme, with the stop $0.80 away — that bar is the most dangerous one and
+   it was being hidden.
+
+Both bugs flatter the hypothesis. Fixed: stop forced to an executable distance
+(>= max(0.05% of price, 4x spread) ~ $2 on gold) and the entry bar is checked.
+
+## Corrected result — the idea fails
+
+| Variant (no session filter) | TRAIN | TEST | n | P(<=0) | missed | stopped on fill bar |
+|---|---|---|---|---|---|---|
+| BASELINE enter at reclaim | −0.024 | −0.106 | 1078 | 96.1% | | |
+| wait deeper hunt 0.5 ATR | −0.003 | −0.036 | 656 | 71.0% | | |
+| wait deeper hunt 1.0 ATR | +0.044 | −0.084 | 383 | 90.1% | | |
+| delay 4 bars | −0.070 | +0.001 | 947 | 52.9% | | |
+| LIMIT back at the level | −0.161 | −0.177 | 918 | 93.3% | 331 | 211 |
+| LIMIT 50% into hunt zone | −0.223 | −0.123 | 878 | 82.7% | 614 | 335 |
+| **LIMIT 100% (at the wick)** | **−0.389** | **−0.073** | 761 | 66.0% | **809** | **434** |
+
++1.949 became −0.073 on the same data with the same rules — the entire result
+was the two bugs.
+
+## Why it fails: adverse selection, now measured
+
+- **Miss rate rises with patience**: 26% -> 41% -> 52% of setups never fill.
+  The ones that never come back are disproportionately the trades that worked.
+- **57% of wick fills are stopped on the entry bar itself** (434 of 761). Price
+  returns to the sweep extreme, and more often than not it is on its way
+  through, not bouncing off it.
+
+The better fill is real. It is paid for twice over — once in the winners you
+never enter, once in the fills that are simply the move continuing.
+
+London panel shows TRAIN negative (−0.004 / −0.152 / −0.288) and TEST positive
+(+0.431 / +0.400 / +0.187) — sign inversion, and under walk-forward selection
+you would never pick a cell that was negative in training.
+
+**No variant beats the baseline. Nothing here rescues the strategy.**
+
+---
+
+# ROUND NUMBERS — tested with a null, REJECTED
+
+| $10-round tolerance | TEST expR | | random subset, same n |
+|---|---|---|---|
+| <0.25 | −0.101 | | seed0 −0.061 |
+| <0.50 | −0.087 | | seed1 −0.019 |
+| **<1.00** | **+0.030** | | seed2 −0.159 |
+| <2.00 | −0.093 | | seed3 −0.169 |
+
+Only the <1.00 band is positive and both neighbouring bands are negative — a
+spike in noise, not a plateau (a real magnet effect strengthens monotonically
+as tolerance tightens). In the London panel the apparent +0.333 sits INSIDE its
+own null: random level subsets of the same size scored +0.113, +0.228, +0.201.
+Rejected.
