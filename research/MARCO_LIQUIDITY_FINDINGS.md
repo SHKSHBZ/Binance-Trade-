@@ -169,3 +169,91 @@ genuinely active hours has no proportionate mechanism behind it. Combined with
 P(expR≤0)=33% and the failed BTC replication, the candidate stays
 **unconfirmed / probably noise**. An FX or silver test is still the only thing
 that would settle it.
+
+---
+
+# EXIT RE-TEST — "maybe the target is reached 1-2 days later"
+
+Trader's hypothesis: the trades are being cut short. Tested three ways.
+
+## 1. No — winners resolve within hours, not days
+
+`_sim` already allows unlimited time to target, so nothing was truncated.
+Measured durations (M15 bars; 96 bars = 1 day):
+
+| Session | winners median | p90 | losers median |
+|---|---|---|---|
+| London 07-10 | 11 bars (2.7h) | 0.3d | 7 bars (1.8h) |
+| ACTIVE 12-16 | 10 bars (2.5h) | 0.9d | 4 bars (1.0h) |
+| Overlap 13-16 | 17 bars (4.3h) | 0.9d | 6 bars (1.5h) |
+
+When the opposing pool is reached, it is reached the same session.
+
+## 2. But the stops ARE too tight — hypothesis right, mechanism different
+
+**Stop-outs that later reached the target within 5 days: 69.6% (London 07-10),
+61.9% (12-16), 65.2% (no filter).** Direction correct, stop hit first. Third
+appearance of this pattern (Mayne: 65% gold / 73% BTC).
+
+## 3. CORRECTION to the earlier mechanism number
+
+The 4.2pp continuation gap reported above used a 3h horizon — the wrong lens.
+At 12-24h the gap is ~2.6x, not 1.3x:
+
+| continuation (never reclaimed) | 3h | 12h | 1d | 2d | 5d |
+|---|---|---|---|---|---|
+| London 07-10 | 13.3% | 5.1% | 4.0% | 3.5% | 2.4% |
+| ACTIVE 12-16 | 17.4% | 13.4% | 10.7% | 7.9% | 5.5% |
+
+Sweeps in high-volatility hours are ~2.6x more likely to genuinely run away.
+The session mechanism is real and larger than first reported.
+
+## 4. Widening the stop does not pay (fixed target)
+
+| stop x | London 07-10 TEST expR | win rate |
+|---|---|---|
+| 1.0 (as specified) | **+0.076** | 30.7% |
+| 2.0 | −0.004 | 43.4% |
+| 4.0 | −0.051 | 56.4% |
+| 6.0 | −0.048 | 64.5% |
+
+Win rate doubles, expectancy flat-to-worse — against a FIXED target price a
+wider stop shrinks R one-for-one. Same in all four sessions.
+
+## 5. Stop x trail grid (reward set by the trail, not a fixed target)
+
+Walk-forward, pick the best cell on TRAIN then read TEST:
+- London 07-10: best train stop x1/trail 8ATR **+0.238** -> TEST **−0.097**. Collapsed.
+- ACTIVE 12-16: best train stop x1/trail 4ATR **+0.090** -> TEST **−0.080**. Collapsed.
+
+## 6. The trail=8ATR column is gold's trend, proven by a null
+
+trail 8ATR was positive OOS nearly everywhere INCLUDING with no session filter
+(+0.092) — the signature of a trending market, not an entry edge. Null test:
+identical entry timing and risk, **random direction**, same trail, 12 seeds.
+
+| Session | stop | REAL | NULL mean | NULL sd | z |
+|---|---|---|---|---|---|
+| London 07-10 | x1 | −0.097 | −0.078 | 0.119 | −0.16 |
+| London 07-10 | x3 | +0.126 | +0.130 | 0.076 | −0.05 |
+| ACTIVE 12-16 | x1 | +0.108 | +0.045 | 0.110 | +0.57 |
+| ACTIVE 12-16 | x3 | +0.175 | +0.144 | 0.070 | +0.45 |
+| **no filter** | **x1** | **+0.092** | **+0.092** | 0.079 | **+0.00** |
+| no filter | x2 | −0.018 | +0.110 | 0.055 | **−2.34** |
+
+**Coin-flip entries with the same trail earn the same money.** No cell clears
+z=+0.6; at no-filter x2 the real signal is significantly WORSE than random.
+Gold buy-and-hold over the same unseen period: **+64.8%**. An 8 ATR trail in
+that market is trend-following with extra steps.
+
+## Net
+
+The trader's premise was factually right (stops too tight; 60-70% of losers
+were directionally correct) and forced a 2x upward correction to the session
+mechanism — but no exit fix produces an edge. Widening against a fixed target
+trades win rate for R one-for-one; replacing the target with a trail either
+collapses under walk-forward selection or is indistinguishable from random.
+
+**Status unchanged: no demonstrated edge on gold.** Only the original
+tight-stop / fixed-pool London 07-10 cell still stands, at P(expR<=0)=33%,
+already failed on BTC. An FX or silver test remains the only thing that settles it.
