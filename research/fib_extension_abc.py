@@ -70,53 +70,78 @@ def structures(df, P=1, min_leg_atr=1.0):
                             stop=l[cb] if direction==1 else h[cb]))
     return sorted(out,key=lambda x:x["conf"]), h,l,c,A,n
 
-def race(df,P=1,levels=FIB,spread=0.0,minrisk_frac=0.0005,min_leg_atr=1.0):
-    """For each structure: enter on the break of C's candle, then race EVERY
-    level against the stop. Returns per-level hit rates + implied breakevens."""
+def race(df,P=1,levels=FIB,spread=0.0,minrisk_frac=0.0005,min_leg_atr=1.0,
+         maxhold=200,rand_entry=None):
+    """Enter on the break of C's candle, race each level against the stop.
+
+    maxhold  : HARD time limit. Without it a long sits open for years until a
+               trending market drifts into any target, while the loss stays
+               capped at -1R -- that is what faked the first two runs.
+    rand_entry: seed for the NULL. Keeps the identical stop/target geometry but
+               puts the entry on a random bar, so drift is priced in."""
     S,h,l,c,A,n=structures(df,P,min_leg_atr)
-    res={k:[] for k in levels}; rrs={k:[] for k in levels}; used=0
-    for s in S:
-        d=s["dir"]; e=s["trig"]; st=s["stop"]
-        # entry must trigger AFTER C is confirmed
-        ei=None
-        for j in range(s["conf"]+1, min(s["conf"]+1+200, n)):
-            if (d>0 and l[j]<st) or (d<0 and h[j]>st): break          # invalidated first
-            if (d>0 and h[j]>=e) or (d<0 and l[j]<=e): ei=j; break
+    o=df["open"].values
+    res={k:[] for k in levels}; rrs={k:[] for k in levels}; sd={k:[] for k in levels}
+    used=0
+    rng=np.random.default_rng(rand_entry) if rand_entry is not None else None
+    for s_ in S:
+        d=s_["dir"]; e=s_["trig"]; st=s_["stop"]
+        # --- HONEST FILL ---------------------------------------------------
+        # C is a swing LOW confirmed P bars later, so by the first bar we are
+        # allowed to act on (conf+1) price has usually ALREADY rallied past
+        # h[C]. Filling at h[C] then buys at a stale price the market left
+        # behind -- a guaranteed-favourable fill. A stop order fills at the
+        # trigger only if the market is still on the right side of it;
+        # otherwise it fills at the open.
+        ei=None; fill=None
+        for j in range(s_["conf"]+1, min(s_["conf"]+1+200, n)):
+            if (d>0 and o[j]>=e) or (d<0 and o[j]<=e):
+                ei=j; fill=o[j]; break            # gapped/already through
+            if (d>0 and l[j]<st) or (d<0 and h[j]>st): break
+            if (d>0 and h[j]>=e) or (d<0 and l[j]<=e):
+                ei=j; fill=e; break
         if ei is None: continue
+        e=fill
+        if rng is not None:                      # NULL: same geometry, random bar
+            ei=int(rng.integers(30,n-maxhold-2))
+            e=c[ei]; st=e-d*abs(s_["trig"]-s_["stop"])
         risk=abs(e-st)
         if risk<=0 or risk<minrisk_frac*e: continue
         used+=1
         for k in levels:
-            tgt=s["C"]+d*k*s["leg"]
+            tgt=(s_["C"]+d*k*s_["leg"]) if rng is None else (e+d*k*s_["leg"])
             if (d>0 and tgt<=e) or (d<0 and tgt>=e): continue
             rr=abs(tgt-e)/risk
-            got=None
-            for j in range(ei+1,n):
+            end=min(ei+maxhold,n-1); got=None
+            for j in range(ei+1,end+1):
                 if (d>0 and l[j]<=st) or (d<0 and h[j]>=st): got=0;break
                 if (d>0 and h[j]>=tgt) or (d<0 and l[j]<=tgt): got=1;break
-            if got is None: continue
-            res[k].append(got); rrs[k].append(rr)
-    return res,rrs,used
+            if got is None:                      # time-stopped: mark to market
+                mtm=((c[end]-e) if d>0 else (e-c[end]))/risk
+                res[k].append(np.clip(mtm,-1,rr)); rrs[k].append(rr); sd[k].append(d)
+                continue
+            res[k].append(float(rr) if got else -1.0); rrs[k].append(rr); sd[k].append(d)
+    return res,rrs,sd,used
 
-def report(name,df,P=1,cost=0.0):
-    print(f"\n{'='*86}\n{name}   P={P} ({'PDF 3-candle rule' if P==1 else f'{2*P+1}-candle'})   bars={len(df)}\n{'='*86}")
-    for tag,levels in (("FIB levels",FIB),("NON-FIB controls",NONFIB)):
-        res,rrs,used=race(df,P,levels,spread=cost)
-        print(f"--- {tag} --- (structures traded: {used})")
-        print(f"{'level':>8}{'n':>7}{'hit%':>8}{'meanRR':>9}{'medRR':>8}{'expR':>9}{'totR':>10}")
+def report(name,df,P=1,cost=0.25,maxhold=200):
+    print(f"\n{'='*92}\n{name}  P={P}  maxhold={maxhold} bars\n{'='*92}")
+    for tag,levels in (("FIB",FIB),("NON-FIB control",NONFIB)):
+        res,rrs,sd,used=race(df,P,levels,maxhold=maxhold)
+        nres,_,_,_=race(df,P,levels,maxhold=maxhold,rand_entry=7)
+        print(f"--- {tag} --- (structures: {used})")
+        print(f"{'level':>7}{'n':>6}{'expR':>9}{'LONG':>9}{'SHORT':>9}{'NULL':>9}{'vs null':>9}")
         for k in levels:
             if not res[k]: continue
-            hit=np.array(res[k]); rr=np.array(rrs[k])
-            # TRUE per-trade expectancy: win pays that trade's own RR, loss pays -1
-            R=np.where(hit==1, rr, -1.0)
-            print(f"{k:>8.3f}{len(R):>7}{100*hit.mean():>8.1f}{rr.mean():>9.2f}{np.median(rr):>8.2f}"
-                  f"{R.mean():>+9.3f}{R.sum():>+10.0f}")
+            R=np.array(res[k]); D=np.array(sd[k]); N=np.array(nres[k]) if nres[k] else np.array([0.])
+            lo=R[D==1].mean() if (D==1).any() else float('nan')
+            sh=R[D==-1].mean() if (D==-1).any() else float('nan')
+            print(f"{k:>7.3f}{len(R):>6}{R.mean():>+9.3f}{lo:>+9.3f}{sh:>+9.3f}{N.mean():>+9.3f}{R.mean()-N.mean():>+9.3f}")
 
 if __name__=="__main__":
     G=load_ohlcv("XAUUSD_1h.csv","2020-01-01","2026-09-16")
     B=pd.concat([load_ohlcv("BTCUSDT_1h_2023_to_2025.csv"),
                  load_ohlcv("BTCUSDT_1h_Jan_to_Jul2026.csv")])
     B=B[~B.index.duplicated()].sort_index()
-    for P in (1,3):
-        report("GOLD H1",G,P)
-        report("BTC H1",B,P)
+    for mh in (100,400):
+        report("GOLD H1",G,3,maxhold=mh)
+        report("BTC H1",B,3,maxhold=mh)
