@@ -54,7 +54,7 @@ def htf_bias(h4, P=3):
 
 def run(mode="internal", P=3, sess=None, tgt="liq", rr=2.0,
         start="2020-01-01", end="2026-09-16", minfrac=0.0005, minspr=4.0,
-        rand=None, maxhold=400, ltf=None, htf=None, spread=None):
+        rand=None, maxhold=400, ltf=None, htf=None, spread=None, look=2000):
     global SPREAD
     _sp=SPREAD
     if spread is not None: SPREAD=spread
@@ -68,6 +68,7 @@ def run(mode="internal", P=3, sess=None, tgt="liq", rr=2.0,
     bias=shifted.reindex(m15.index,method="ffill").values
 
     h,l,c=m15["high"].values,m15["low"].values,m15["close"].values
+    o_=m15["open"].values
     t=m15.index; n=len(c); A=atr(h,l,c)
     ph,pl=confirmed_pivots(h,l,P)
     hh=t.hour.values
@@ -84,8 +85,8 @@ def run(mode="internal", P=3, sess=None, tgt="liq", rr=2.0,
         if not np.isnan(ph[i]): highs.append((i,ph[i]))
         b=bias[i]
         if np.isnan(b) or b==0 or A[i]<=0: continue
-        lows=[(j,v) for j,v in lows if i-j<2000]
-        highs=[(j,v) for j,v in highs if i-j<2000]
+        lows=[(j,v) for j,v in lows if i-j<look]
+        highs=[(j,v) for j,v in highs if i-j<look]
         if b>0 and len(lows)>=2:
             # anchor = most recent confirmed low preceding the most recent high
             hi_bar = highs[-1][0] if highs else -1
@@ -132,7 +133,7 @@ def run(mode="internal", P=3, sess=None, tgt="liq", rr=2.0,
             if (d>0 and h[j]>=g) or (d<0 and l[j]<=g): R=abs(g-e)/risk; break
         if R is None: R=np.clip(((c[end_i]-e) if d>0 else (e-c[end_i]))/risk,-1,abs(g-e)/risk)
         trades.append(dict(time=t[i],dir=d,entry=e,stop=s,target=g,
-                           R=R-SPREAD/risk,risk=risk))
+                           R=R-SPREAD/risk,risk=risk,lvl=lvl,prev_c=c[i-1],opn=o_[i]))
         busy=j if R is not None else i+1
     SPREAD=_sp
     return pd.DataFrame(trades)

@@ -83,3 +83,11 @@ All persistence via `MutSeriesF`; `nan` = "no value / don't draw".
 after costs (see `../research/`). Conclusion: the edge is the trader's live
 discretion + risk discipline, so the deliverable is a **marking tool** that
 supports that, not an automated system.
+
+---
+## NEW: `gold_merge.indie` (the tested strategy indicator)
+Signals the GOLD-MERGE major-level reclaim on XAUUSD 1H. Reading guide:
+`GOLD_MERGE_HOW_TO_READ.md`. Its logic is verified trade-for-trade against a
+backtest by `research/indie_transliteration_check.py`. Only uses Indie
+constructs already proven in gold_method.indie (MutSeriesF, plot.Line, Ema,
+constant-index comparisons). Do not change the tested numbers (16, 3, 500, 3.0, 100).

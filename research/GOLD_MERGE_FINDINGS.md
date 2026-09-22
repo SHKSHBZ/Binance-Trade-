@@ -44,3 +44,36 @@ Internal beat external in **all 8** 1H comparisons on gold.
 ## Status
 Strongest mechanical candidate in the project, gold only. **Not proven.**
 Right next step is forward paper-trading, not live money.
+
+---
+
+# CORRECTION — what the edge actually is (found while building the indicator)
+
+While translating the strategy into a chart indicator, the simplified version
+scored ~0. Tracing why revealed that the backtest's "trap level" was **the
+highest swing low of the last 2000 candles** (a lookback added only for speed),
+not the nearest internal low. Sensitivity test (1H entry, H4 trend, 3R):
+
+| lookback | ~days | n | expR |
+|---|---|---|---|
+| 50-100 | 2-4 | 878-946 | −0.04 to −0.05 |
+| 200-400 | 8-17 | 586-797 | +0.01 to +0.04 |
+| 700-1000 | 29-42 | 353-423 | +0.14 to +0.18 |
+| **1500-5000** | **62-208** | 202-287 | **+0.30 to +0.36** |
+
+So: **nearest (minor) internal levels carry no edge** — consistent with every
+other sweep test here. The edge is at **major levels**: price trades through
+the highest swing low of recent months and closes back above it, in trend,
+while the line in the sand holds. It is a plateau, not a single-value spike.
+Earlier statements that "small inside levels work" were wrong.
+
+## The chart version (tools/gold_merge.indie)
+1H only, trend from 16-bar swings, major level from 4 x 500-candle buckets.
+- Replica backtest: n=284, +0.254R, P(<=0)=0.8%, long +0.273, short +0.197,
+  train +0.216 / test +0.291, without top-10 +0.154, null z=+2.14.
+  Years: 2020 −0.02, 2021 −0.19, 2022-2026 all positive.
+- Line-by-line transliteration of the .indie file: 281 trades, +0.281R;
+  270 trades identical to the replica, the rest differ only through where the
+  500-candle blocks start.
+- BTC, same logic: −0.104. Gold only.
+- Worst losing streak 11; median stop $5.57.
