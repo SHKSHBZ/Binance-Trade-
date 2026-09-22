@@ -87,7 +87,10 @@ def run(mode="internal", P=3, sess=None, tgt="liq", rr=2.0,
         lows=[(j,v) for j,v in lows if i-j<2000]
         highs=[(j,v) for j,v in highs if i-j<2000]
         if b>0 and len(lows)>=2:
-            ext_lo=min(v for _,v in lows)                     # anchor of the leg
+            # anchor = most recent confirmed low preceding the most recent high
+            hi_bar = highs[-1][0] if highs else -1
+            prior = [v for j,v in lows if j < hi_bar]
+            ext_lo = prior[-1] if prior else min(v for _,v in lows)
             internals=[v for _,v in lows if v>ext_lo]         # inducement levels
             lvls = internals if mode=="internal" else [ext_lo]
             if not lvls: continue
@@ -96,7 +99,9 @@ def run(mode="internal", P=3, sess=None, tgt="liq", rr=2.0,
             if mode=="internal" and l[i] <= ext_lo: continue  # external must hold
             d=1
         elif b<0 and len(highs)>=2:
-            ext_hi=max(v for _,v in highs)
+            lo_bar = lows[-1][0] if lows else -1
+            prior = [v for j,v in highs if j < lo_bar]
+            ext_hi = prior[-1] if prior else max(v for _,v in highs)
             internals=[v for _,v in highs if v<ext_hi]
             lvls = internals if mode=="internal" else [ext_hi]
             if not lvls: continue
