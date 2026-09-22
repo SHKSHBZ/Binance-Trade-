@@ -75,3 +75,9 @@ In the Exness alert window, choose **Gold Merge** as the source and create:
 Set the frequency to **"once per bar close"** if offered, so the alert only
 fires when the candle has closed. When it fires: open the chart, check the
 ENTRY/STOP/TARGET lines, size the lot, place the trade.
+
+## Pine version (TradingView, or Exness if it accepts Pine)
+`tools/gold_merge.pine` is the same strategy, line for line, and adds a
+**BUY / SELL label on the signal candle** plus real alerts:
+Add alert -> Condition: **Gold Merge** -> **Gold Merge BUY** (or **SELL**) -> **Once Per Bar Close**.
+Use it on XAUUSD **1-hour**. Do not use the old `gold_method.pine` (superseded).

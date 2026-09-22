@@ -1,0 +1,170 @@
+//@version=5
+// ============================================================================
+//  GOLD MERGE  -  XAUUSD, 1-HOUR CHART ONLY   (Pine v5 version)
+//  Same logic, line for line, as tools/gold_merge.indie (the tested strategy).
+//
+//  ON THE CHART
+//    Trend line   GREEN = buys only   RED = sells only   GRAY = no trades
+//    ORANGE line  = the major level to watch
+//    GRAY line    = line in the sand
+//    "BUY" / "SELL" label on the candle where a trade starts
+//    AQUA / RED / GREEN lines = ENTRY / STOP / TARGET while the trade is open
+//
+//  THE RULE (buy; sell is the mirror image)
+//    trend GREEN + a candle trades below the orange line and CLOSES back
+//    above it + stays above the gray line  ->  BUY at that close,
+//    STOP under that candle, TARGET = 3x the risk. Close after 100 candles.
+//
+//  ALERTS: add alert -> condition "Gold Merge" -> "Gold Merge BUY" or
+//  "Gold Merge SELL" -> "Once Per Bar Close".
+//
+//  The numbers 16, 3, 500, 3.0 and 100 are the TESTED values. Don't change them.
+// ============================================================================
+indicator("Gold Merge", overlay=true)
+emaLen = input.int(50, "Trend line smoothing (visual only)", minval=2)
+ema    = ta.ema(close, emaLen)
+
+// ---- 1. TREND from BIG swings (16 candles each side ~ one 4-hour swing) ----
+bigSwingHigh = high[16] == ta.highest(high, 33)
+bigSwingLow  = low[16]  == ta.lowest(low, 33)
+var float bigHi = na
+var float bigLo = na
+var float trend = 0.0
+if bigSwingHigh
+    bigHi := high[16]
+if bigSwingLow
+    bigLo := low[16]
+if not na(bigHi) and close > bigHi
+    trend := 1.0
+    bigHi := na
+if not na(bigLo) and close < bigLo
+    trend := -1.0
+    bigLo := na
+
+// ---- 2. SMALL swings (3 candles each side) -> line in the sand -------------
+smallSwingHigh = high[3] == ta.highest(high, 7)
+smallSwingLow  = low[3]  == ta.lowest(low, 7)
+var float smHi   = na
+var float smLo   = na
+var float sandLo = na
+var float sandHi = na
+
+// ---- 3. MAJOR levels: 4 buckets of 500 candles (~1500-2000 candles) --------
+var float loB0 = na
+var float loB1 = na
+var float loB2 = na
+var float loB3 = na
+var float hiB0 = na
+var float hiB1 = na
+var float hiB2 = na
+var float hiB3 = na
+var int   count = 0
+count += 1
+if count >= 500
+    count := 0
+    loB3 := loB2
+    loB2 := loB1
+    loB1 := loB0
+    loB0 := na
+    hiB3 := hiB2
+    hiB2 := hiB1
+    hiB1 := hiB0
+    hiB0 := na
+
+if smallSwingHigh
+    sandLo := smLo
+    smHi   := high[3]
+    if na(hiB0) or high[3] < hiB0
+        hiB0 := high[3]
+if smallSwingLow
+    sandHi := smHi
+    smLo   := low[3]
+    if na(loB0) or low[3] > loB0
+        loB0 := low[3]
+
+majorLo = loB0
+if not na(loB1) and (na(majorLo) or loB1 > majorLo)
+    majorLo := loB1
+if not na(loB2) and (na(majorLo) or loB2 > majorLo)
+    majorLo := loB2
+if not na(loB3) and (na(majorLo) or loB3 > majorLo)
+    majorLo := loB3
+majorHi = hiB0
+if not na(hiB1) and (na(majorHi) or hiB1 < majorHi)
+    majorHi := hiB1
+if not na(hiB2) and (na(majorHi) or hiB2 < majorHi)
+    majorHi := hiB2
+if not na(hiB3) and (na(majorHi) or hiB3 < majorHi)
+    majorHi := hiB3
+
+float watchLo = na
+if not na(majorLo) and not na(sandLo) and majorLo > sandLo
+    watchLo := majorLo
+float watchHi = na
+if not na(majorHi) and not na(sandHi) and majorHi < sandHi
+    watchHi := majorHi
+
+// ---- 4. OPEN TRADE: stop or target hit this candle? -------------------------
+var float tDir    = 0.0
+var float tEntry  = na
+var float tStop   = na
+var float tTarget = na
+var int   tAge    = 0
+closedNow = false
+if tDir != 0.0
+    tAge += 1
+    done = false
+    if tDir > 0.0 and (low <= tStop or high >= tTarget)
+        done := true
+    if tDir < 0.0 and (high >= tStop or low <= tTarget)
+        done := true
+    if tAge >= 100
+        done := true
+    if done
+        tDir    := 0.0
+        tEntry  := na
+        tStop   := na
+        tTarget := na
+        closedNow := true
+
+// ---- 5. NEW SIGNAL (only when no trade is open) -----------------------------
+buySig  = false
+sellSig = false
+if tDir == 0.0 and not closedNow
+    minRisk = math.max(0.0005 * close, 1.0)
+    goLong  = trend > 0.5 and not na(watchLo) and low < watchLo and close > watchLo and low > sandLo
+    goShort = trend < -0.5 and not na(watchHi) and high > watchHi and close < watchHi and high < sandHi
+    if goLong
+        stp = math.min(low, close - minRisk)
+        tDir    := 1.0
+        tEntry  := close
+        tStop   := stp
+        tTarget := close + 3.0 * (close - stp)
+        tAge    := 0
+        buySig  := true
+    else if goShort
+        stp = math.max(high, close + minRisk)
+        tDir    := -1.0
+        tEntry  := close
+        tStop   := stp
+        tTarget := close - 3.0 * (stp - close)
+        tAge    := 0
+        sellSig := true
+
+// ---- 6. DRAW + ALERTS --------------------------------------------------------
+trendColor = trend > 0.5 ? color.green : trend < -0.5 ? color.red : color.gray
+watch = trend > 0.5 ? watchLo : trend < -0.5 ? watchHi : na
+sand  = trend > 0.5 ? sandLo  : trend < -0.5 ? sandHi  : na
+
+plot(ema,     "Trend",               color=trendColor,   linewidth=2)
+plot(watch,   "Major level (watch)", color=color.orange, linewidth=2, style=plot.style_linebr)
+plot(sand,    "Line in the sand",    color=color.gray,   style=plot.style_linebr)
+plot(tEntry,  "ENTRY",               color=color.aqua,   linewidth=2, style=plot.style_linebr)
+plot(tStop,   "STOP",                color=color.red,    linewidth=2, style=plot.style_linebr)
+plot(tTarget, "TARGET",              color=color.green,  linewidth=2, style=plot.style_linebr)
+
+plotshape(buySig,  "BUY",  shape.labelup,   location.belowbar, color.green, text="BUY",  textcolor=color.white, size=size.small)
+plotshape(sellSig, "SELL", shape.labeldown, location.abovebar, color.red,   text="SELL", textcolor=color.white, size=size.small)
+
+alertcondition(buySig,  "Gold Merge BUY",  "Gold Merge BUY on XAUUSD 1H - check ENTRY / STOP / TARGET lines")
+alertcondition(sellSig, "Gold Merge SELL", "Gold Merge SELL on XAUUSD 1H - check ENTRY / STOP / TARGET lines")

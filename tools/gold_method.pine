@@ -1,4 +1,6 @@
 //@version=5
+// !!! SUPERSEDED - do not use. Its prior-day-sweep method tested with no edge and
+// !!! its breakeven rule was measured as harmful. Use tools/gold_merge.pine instead.
 // ==========================================================================
 //  GOLD METHOD ASSISTANT  --  for the Exness Terminal (TradingView / Pine v5)
 //  A MARKING + ALERT tool for the evidence-based method. It does NOT trade;
