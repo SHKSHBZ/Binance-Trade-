@@ -87,7 +87,7 @@ supports that, not an automated system.
 ---
 ## NEW: `gold_merge.indie` (the tested strategy indicator)
 Signals the GOLD-MERGE major-level reclaim on XAUUSD 1H. Reading guide:
-`GOLD_MERGE_HOW_TO_READ.md`. Its logic is verified trade-for-trade against a
+`GOLD_MERGE_HOW_TO_READ.md`. Alerts are built in (BUY signal / SELL signal outputs; Exness would not run a second custom indicator). Its logic is verified trade-for-trade against a
 backtest by `research/indie_transliteration_check.py`. Only uses Indie
 constructs already proven in gold_method.indie (MutSeriesF, plot.Line, Ema,
 constant-index comparisons). Do not change the tested numbers (16, 3, 500, 3.0, 100).

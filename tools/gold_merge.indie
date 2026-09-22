@@ -17,6 +17,12 @@
 #    +  CLOSES back ABOVE it  +  stays above the gray line
 #    ->  ENTRY at that close, STOP under that candle, TARGET = 3x the risk
 #
+#  ALERTS (Exness alert window, source = Gold Merge):
+#    BUY  alert:  "BUY signal"  greater than 0     (once per bar close)
+#    SELL alert:  "SELL signal" greater than 0     (once per bar close)
+#    These two values exist ONLY on the candle where a trade starts,
+#    so each alert fires once per trade. Nothing extra is drawn.
+#
 #  Backtest of this exact logic, gold 1H 2020-2026:
 #    284 trades, 33% win, +0.254R per trade  (research/GOLD_MERGE_FINDINGS.md)
 #  The numbers 16, 3, 500, 3.0 and 100 below are the TESTED values.
@@ -35,6 +41,8 @@ from indie.algorithms import Ema
 @plot.line(title='ENTRY')
 @plot.line(title='STOP')
 @plot.line(title='TARGET')
+@plot.line(title='BUY signal')
+@plot.line(title='SELL signal')
 def Main(self, ema_len):
     ema = Ema.new(self.close, ema_len)
 
@@ -212,6 +220,8 @@ def Main(self, ema_len):
     # ------------------------------------------------------------------
     # 5. NEW SIGNAL (only when no trade is open)
     # ------------------------------------------------------------------
+    buy_signal = nan
+    sell_signal = nan
     if t_dir[0] == 0.0 and not closed_now:
         min_risk = 0.0005 * self.close[0]
         if min_risk < 1.0:
@@ -234,6 +244,7 @@ def Main(self, ema_len):
             t_stop[0] = stop
             t_target[0] = entry + 3.0 * (entry - stop)
             t_age[0] = 0.0
+            buy_signal = entry
         elif go_short:
             entry = self.close[0]
             stop = self.high[0]
@@ -244,6 +255,7 @@ def Main(self, ema_len):
             t_stop[0] = stop
             t_target[0] = entry - 3.0 * (stop - entry)
             t_age[0] = 0.0
+            sell_signal = entry
 
     # ------------------------------------------------------------------
     # 6. DRAW
@@ -267,4 +279,6 @@ def Main(self, ema_len):
         plot.Line(t_entry[0], color=color.AQUA),
         plot.Line(t_stop[0], color=color.RED),
         plot.Line(t_target[0], color=color.GREEN),
+        plot.Line(buy_signal, color=color.GREEN),
+        plot.Line(sell_signal, color=color.RED),
     )
