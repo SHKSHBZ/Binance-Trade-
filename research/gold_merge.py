@@ -54,9 +54,14 @@ def htf_bias(h4, P=3):
 
 def run(mode="internal", P=3, sess=None, tgt="liq", rr=2.0,
         start="2020-01-01", end="2026-09-16", minfrac=0.0005, minspr=4.0,
-        rand=None, maxhold=400):
-    m15=load_ohlcv("XAUUSD_15m.csv",start,end)
-    h4=load_ohlcv("XAUUSD_4h.csv",start,end)
+        rand=None, maxhold=400, ltf=None, htf=None, spread=None):
+    global SPREAD
+    _sp=SPREAD
+    if spread is not None: SPREAD=spread
+    if ltf is None:
+        m15=load_ohlcv("XAUUSD_15m.csv",start,end); h4=load_ohlcv("XAUUSD_4h.csv",start,end)
+    else:
+        m15=ltf; h4=htf
     bias4=htf_bias(h4,P)
     # causal HTF map: an M15 bar sees only the PREVIOUS CLOSED H4 bar
     shifted=bias4.shift(1)
@@ -124,6 +129,7 @@ def run(mode="internal", P=3, sess=None, tgt="liq", rr=2.0,
         trades.append(dict(time=t[i],dir=d,entry=e,stop=s,target=g,
                            R=R-SPREAD/risk,risk=risk))
         busy=j if R is not None else i+1
+    SPREAD=_sp
     return pd.DataFrame(trades)
 
 def boot(R,n=4000,seed=0):
