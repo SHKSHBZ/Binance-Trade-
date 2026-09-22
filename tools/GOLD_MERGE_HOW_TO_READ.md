@@ -59,3 +59,18 @@ Typical stop is about **$5.60**. When the account grows, redo it: lot = (balance
 - Works on **gold only**. Tested on Bitcoin: does not work there.
 
 **Paper-trade it for 2–3 months before using real money.**
+
+## Alerts (so you don't have to watch the chart)
+Add the second indicator **Gold Merge Signal** (`gold_merge_signal.indie`) to the
+same XAUUSD 1H chart. It shows one line in a small pane under the chart:
+**+1 = BUY open, −1 = SELL open, 0 = no trade.** Same logic as Gold Merge.
+
+In the Exness alert window, choose **Gold Merge Signal** as the source and create:
+- **BUY alert:** Signal **crossing up 0.5**
+- **SELL alert:** Signal **crossing down −0.5**
+- *(optional)* **Trade finished:** Signal **crossing 0**
+
+If the alert window offers **"once per bar close"**, pick it, so the alert only
+fires when the candle has closed (same rule as trading it by eye).
+When an alert fires: open the chart, check the ENTRY/STOP/TARGET lines, size the
+lot, place the trade.
