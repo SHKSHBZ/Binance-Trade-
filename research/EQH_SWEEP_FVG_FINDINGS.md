@@ -21,3 +21,12 @@ The single positive cell (gold 15m, FVG entry, eps 0.05%, n=74) is noise:
 P(<=0)=44%, train +0.129 -> test −0.078, and its neighbours at eps 0.10/0.15%
 are negative. Consistent with earlier findings: obvious equal highs/lows are
 run through more often than they are defended.
+
+## Sensitivity: were my open choices the reason it fails? No.
+Each assumed choice changed one at a time, gold 15m (`eqh_sensitivity.py`).
+**All 25 variations are negative.** Best: stop = sweep extreme + 2 ATR,
+FVG entry, n=46, −0.029R, P(<=0)=56% — and still negative out-of-sample
+(test −0.123). Swing size (3/5/8), equal-high spacing (50/100/200), cancel
+threshold (0.05/0.10/0.20%), stop ATR (0/0.5/1/2), minimum R (1.5/2/3) and
+FVG edge vs middle all leave it losing. The strategy fails on its core
+premise, not on my interpretation of the gaps in the spec.

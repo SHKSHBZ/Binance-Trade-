@@ -45,7 +45,7 @@ def setups(h,l,eps):
             out.append(dict(side=1,level=min(l[a],l[b]),target=h[a:b+1].max(),active=b+K))
     return out
 
-def run(df, eps=0.001, entry="A", cost=0.25, cost_frac=None, rand=None):
+def run(df, eps=0.001, entry="A", cost=0.25, cost_frac=None, rand=None, atr_mult=1.0, fvg_at="ce"):
     h,l,c=df.high.values,df.low.values,df.close.values; n=len(c); A=atr(h,l,c)
     rng=np.random.default_rng(rand) if rand is not None else None
     cands=[]
@@ -71,18 +71,18 @@ def run(df, eps=0.001, entry="A", cost=0.25, cost_frac=None, rand=None):
         if entry=="A":
             fill=trig; e=c[trig]
             ext=h[t_sweep:trig+1].max() if d<0 else l[t_sweep:trig+1].min()
-            stop=ext+A[trig] if d<0 else ext-A[trig]
+            stop=ext+atr_mult*A[trig] if d<0 else ext-atr_mult*A[trig]
             check_fill_bar=False
         else:
             fvg=None
             for t in range(max(trig,t_sweep+2), min(trig+W_FVG,n)):
-                if d<0 and l[t-2]>h[t]: fvg=(t,(l[t-2]+h[t])/2); break
-                if d>0 and h[t-2]<l[t]: fvg=(t,(h[t-2]+l[t])/2); break
+                if d<0 and l[t-2]>h[t]: fvg=(t,(l[t-2]+h[t])/2 if fvg_at=="ce" else h[t]); break
+                if d>0 and h[t-2]<l[t]: fvg=(t,(h[t-2]+l[t])/2 if fvg_at=="ce" else l[t]); break
             if fvg is None: continue
             tf,ce=fvg; fill=None
             for j in range(tf+1, min(tf+1+W_FILL,n)):
                 ext=h[t_sweep:j].max() if d<0 else l[t_sweep:j].min()
-                stp=ext+A[j-1] if d<0 else ext-A[j-1]
+                stp=ext+atr_mult*A[j-1] if d<0 else ext-atr_mult*A[j-1]
                 if (d<0 and l[j]<=tgt) or (d>0 and h[j]>=tgt): break        # ran to target without us
                 if (d<0 and h[j]>=ce) or (d>0 and l[j]<=ce): fill=j; e=ce; stop=stp; break
             if fill is None: continue
