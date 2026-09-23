@@ -129,7 +129,8 @@ def ut_bot(h, l, c, key=UT_KEY, atr_period=UT_ATR):
 
 # ---- backtest ------------------------------------------------------------
 def run(data_file, start=None, end=None, stop_slippage=STOP_SLIPPAGE_PCT,
-        ma_type=MA_TYPE, ma_len=MA_LEN, swing_lb=SWING_LOOKBACK):
+        ma_type=MA_TYPE, ma_len=MA_LEN, swing_lb=SWING_LOOKBACK,
+        ut_key=UT_KEY, ut_atr=UT_ATR):
     df = load_ohlcv(data_file, start, end)
     o, h, l, c = (df["open"].values, df["high"].values,
                   df["low"].values, df["close"].values)
@@ -138,7 +139,7 @@ def run(data_file, start=None, end=None, stop_slippage=STOP_SLIPPAGE_PCT,
 
     ma = baseline_ma(c, ma_type, ma_len)
     ma_rising = np.concatenate([[False], ma[1:] > ma[:-1]])
-    stop_line, ut_buy, ut_sell = ut_bot(h, l, c)
+    stop_line, ut_buy, ut_sell = ut_bot(h, l, c, key=ut_key, atr_period=ut_atr)
 
     long_signal = ut_buy & ma_rising & (c > ma)
     short_signal = ut_sell & (~ma_rising) & (c < ma)
