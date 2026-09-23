@@ -77,3 +77,34 @@ Earlier statements that "small inside levels work" were wrong.
   500-candle blocks start.
 - BTC, same logic: −0.104. Gold only.
 - Worst losing streak 11; median stop $5.57.
+
+---
+
+# Frequency vs edge — why this cannot be an intraday system
+
+The trader is intraday and needs several trades a week. Speeding the strategy
+up (15m entries, shorter major-level lookback), 3R, costs included:
+
+| version | trades/yr | per week | expR | P(luck) |
+|---|---|---|---|---|
+| 1H, ~3-month levels (current) | ~40 | 0.8 | +0.28 | ~1% |
+| 15m, ~83-day levels | 113 | 2.2 | +0.067 | 20.9% |
+| 15m, ~21-day levels | 180 | 3.5 | +0.028 | 33.2% |
+| 15m, ~5-day levels | 345 | 6.6 | −0.024 | 69.8% |
+| 15m, ~1-day levels | 446 | 8.6 | −0.080 | 97.4% |
+
+The edge disappears as frequency rises; at intraday frequency it is negative.
+
+## Using the trend colour as a filter on the trader's own trades
+Gold Merge trend at entry (last closed 1H candle), trader's verified 82-trade log:
+
+| | n | win | per trade | total |
+|---|---|---|---|---|
+| WITH trend | 73 | 38.4% | +0.138R | +10.1R |
+| AGAINST trend | 9 | 33.3% | −0.012R | −0.1R |
+
+All of the log's profit came from with-trend trades; 89% of trades were already
+with trend. n=9 against-trend is too small to prove the filter, but it points
+the same way as the earlier Fib finding (trend filter +0.148 vs −0.133 without).
+Recommended use for an intraday trader: Gold Merge as a direction compass for
+their own setups, plus its rare signals as bonus trades.
