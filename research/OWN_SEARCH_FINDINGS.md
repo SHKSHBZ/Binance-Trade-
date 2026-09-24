@@ -43,3 +43,19 @@ Gold in 2026: 4,891 (Jan) → 5,279 (Feb) → 4,006 (Jun) → 4,259 (Sep).
   trades; C2 ≈ +0.07R over 1,080.
 - The stop in 2026 has to be wide: a median of $33 (C1) to $46 (C2). Stops of
   $5–8 (500–800 points) sit inside normal gold noise (see TREND_PULLBACK_POINTS_FINDINGS.md).
+
+## Intraday-only version (every trade closed same day, by 16:00 or 16:45 ET)
+Constraint from the trader: intraday only. No overnight holds. `own_search_intraday.py`.
+
+| NY 9–10 ET breakout, trend dir, stop other side | build | check | **2026** |
+|---|---|---|---|
+| 1R, flat 16:00 | +0.020 | +0.057 | **+0.095** |
+| 1.5R, flat 16:00 | +0.041 | +0.042 | **+0.077** |
+| **2R, flat 16:00** | **+0.043** | **+0.070** | **+0.106** (L +0.119 / S +0.092) |
+| 2R, flat 16:45 | +0.061 | +0.090 | **+0.100** |
+| 2R, half-range stop | +0.025 | +0.273 | +0.013 |
+
+All 18 full-range-stop cells are positive in every period, including 2026 for longs and shorts.
+No single period is statistically significant (P 6–30%). Combined over all periods,
+2R flat 16:00 is about +0.06R/trade over 531 trades. That's a small edge, a little better
+than breakeven. The half-size stop is worse.
