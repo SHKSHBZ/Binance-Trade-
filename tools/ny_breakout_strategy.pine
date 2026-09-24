@@ -1,0 +1,78 @@
+//@version=5
+// NY OPENING-RANGE BREAKOUT, INTRADAY, GOLD (XAUUSD) 15-MINUTE CHART
+// Same rules as research/own_search_intraday.py ("2R, flat 16:00 ET"):
+//  1. Range  = high/low of 09:00-10:00 New York time (DST handled automatically)
+//  2. Trend  = EMA 80 vs EMA 800 on the 15m chart (about 20h vs 200h)
+//  3. Entry  = FIRST 15m close outside the range between 10:00 and 15:00 NY.
+//              If that first breakout is against the trend, no trade that day.
+//  4. Stop   = other side of the range;  Target = 2R
+//  5. Close anything still open at 16:00 NY. One trade per day. No overnight holds.
+strategy("NY Breakout Intraday - Gold 15m", overlay=true, process_orders_on_close=true,
+     initial_capital=5000, currency=currency.USD, pyramiding=0,
+     commission_type=strategy.commission.cash_per_contract, commission_value=0.125)
+
+tz        = "America/New_York"
+rangeSess = input.session("0900-1000", "Opening range (NY time)")
+entrySess = input.session("1000-1500", "Entry window (NY time)")
+flatHour  = input.int(16, "Close all trades at (NY hour)", minval=0, maxval=23)
+rr        = input.float(2.0, "Target (R multiple)", step=0.5)
+riskPct   = input.float(2.0, "Risk per trade (% of equity)", step=0.5)
+emaFastL  = input.int(80, "Fast EMA length")
+emaSlowL  = input.int(800, "Slow EMA length")
+useTrend  = input.bool(true, "Trade only with the trend")
+
+emaF = ta.ema(close, emaFastL)
+emaS = ta.ema(close, emaSlowL)
+dATR = request.security(syminfo.tickerid, "D", ta.atr(14)[1], lookahead=barmerge.lookahead_on)
+
+inRange = not na(time(timeframe.period, rangeSess, tz))
+inEntry = not na(time(timeframe.period, entrySess, tz))
+nyHour  = hour(time, tz)
+newDay  = ta.change(dayofmonth(time, tz)) != 0
+
+var float rHi    = na
+var float rLo    = na
+var int   rCount = 0
+var bool  done   = false
+
+if newDay
+    rHi    := na
+    rLo    := na
+    rCount := 0
+    done   := false
+
+if inRange
+    rHi    := na(rHi) ? high : math.max(rHi, high)
+    rLo    := na(rLo) ? low  : math.min(rLo, low)
+    rCount += 1
+
+ready   = inEntry and not done and rCount >= 3 and strategy.position_size == 0
+upBreak = ready and close > rHi
+dnBreak = ready and close < rLo
+trendUp = emaF > emaS
+trendDn = emaF < emaS
+
+sizeFor(dist) => math.max(1, math.floor(strategy.equity * riskPct / 100 / (dist * syminfo.pointvalue)))
+
+if upBreak
+    done := true
+    if trendUp or not useTrend
+        dist = math.max(close - rLo, 0.1 * dATR)
+        strategy.entry("BUY", strategy.long, qty=sizeFor(dist))
+        strategy.exit("BUY exit", "BUY", stop=close - dist, limit=close + rr * dist)
+
+if dnBreak
+    done := true
+    if trendDn or not useTrend
+        dist = math.max(rHi - close, 0.1 * dATR)
+        strategy.entry("SELL", strategy.short, qty=sizeFor(dist))
+        strategy.exit("SELL exit", "SELL", stop=close + dist, limit=close - rr * dist)
+
+if nyHour >= flatHour and strategy.position_size != 0
+    strategy.close_all(comment="Time exit")
+
+plot(emaF, "EMA 80",  color=color.new(color.orange, 0))
+plot(emaS, "EMA 800", color=color.new(color.blue, 0), linewidth=2)
+plot(inRange or inEntry ? rHi : na, "Range high", color=color.green, style=plot.style_linebr)
+plot(inRange or inEntry ? rLo : na, "Range low",  color=color.red,   style=plot.style_linebr)
+bgcolor(inRange ? color.new(color.yellow, 88) : na, title="Range hour")
