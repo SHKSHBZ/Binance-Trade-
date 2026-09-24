@@ -35,6 +35,10 @@ When gold is X% below its 5-day top, sell with the stop at the top and the targe
 
 BTC: sells hit the target first 44–50% of the time, buys 54–57%.
 
-**Conclusion:** at the moment you'd sell, a drop that keeps going looks the same as a dip that gets
-bought back. Historically it kept falling slightly less than half the time. The drops were real,
-but they can't be picked out early enough to profit.
+**Conclusion (corrected):** this shows that one simple rule fails: selling because price is X%
+below its recent top. It does NOT show that drops can't be caught. Drops were caught in these cases:
+- **The trader's own 82-trade log:** 41 sells, 41% win, **+0.23R average, +9.5R total**, which is nearly
+  all of the log's +10R. The 41 buys made +0.5R.
+- **Intraday NY breakout sells** (only taken when EMA80 < EMA800): +0.09R in build (146 trades),
+  +0.20R in check (18), **+0.09R in 2026** (42). Positive in every period.
+- Sells taken before a falling month averaged +0.09 to +0.34R (SHORT_SIDE_FINDINGS.md).
