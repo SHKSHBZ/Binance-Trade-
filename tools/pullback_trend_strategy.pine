@@ -8,9 +8,7 @@
 //  5. SESSION   : 07:00-21:00 London time (London, NY overlap, NY afternoon). NO Asia.
 //  6. STOP      : beyond the pullback extreme (last 16 candles) + 0.05 daily ATR; skip if < 0.15 or > 0.6 daily ATR
 //  7. TARGET    : 2R.  One trade at a time.
-strategy("Gold Pullback-in-Trend 15m", overlay=true, process_orders_on_close=true,
-     initial_capital=5000, currency=currency.USD, pyramiding=0,
-     commission_type=strategy.commission.cash_per_contract, commission_value=0.125)
+strategy("Gold Pullback-in-Trend 15m", overlay=true, process_orders_on_close=true, initial_capital=5000, currency=currency.USD, pyramiding=0, commission_type=strategy.commission.cash_per_contract, commission_value=0.125)
 
 riskPct  = input.float(2.0, "Risk per trade (% of equity)", step=0.5)
 rr       = input.float(2.0, "Target (R)", step=0.5)
@@ -42,7 +40,9 @@ turn   = dir * (close - close[4]) > 0
 moving = atr15 > 1.2 * atr5d or spikeToday
 setup  = dir != 0 and inSess and pull and turn and (moving or not useVol) and strategy.position_size == 0
 
-ext    = dir == 1 ? ta.lowest(low, 16) : ta.highest(high, 16)
+lo16   = ta.lowest(low, 16)
+hi16   = ta.highest(high, 16)
+ext    = dir == 1 ? lo16 : hi16
 stopPx = ext - dir * 0.05 * dATR
 risk   = dir * (close - stopPx)
 okRisk = risk >= 0.15 * dATR and risk <= 0.6 * dATR

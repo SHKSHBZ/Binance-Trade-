@@ -7,9 +7,7 @@
 //              If that first breakout is against the trend, no trade that day.
 //  4. Stop   = other side of the range;  Target = 2R
 //  5. Close anything still open at 16:00 NY. One trade per day. No overnight holds.
-strategy("NY Breakout Intraday - Gold 15m", overlay=true, process_orders_on_close=true,
-     initial_capital=5000, currency=currency.USD, pyramiding=0,
-     commission_type=strategy.commission.cash_per_contract, commission_value=0.125)
+strategy("NY Breakout Intraday - Gold 15m", overlay=true, process_orders_on_close=true, initial_capital=5000, currency=currency.USD, pyramiding=0, commission_type=strategy.commission.cash_per_contract, commission_value=0.125)
 
 tz        = "America/New_York"
 rangeSess = input.session("0900-1000", "Opening range (NY time)")
