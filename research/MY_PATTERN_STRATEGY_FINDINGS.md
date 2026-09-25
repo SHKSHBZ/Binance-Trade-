@@ -70,3 +70,23 @@ In the clean period the speed check and the confirmation candle both help, and t
 mostly from buys during the gold bull run. In the trader's own period the code lost −17R while the trader made +10R.
 Over the whole period it is about +0.05R per trade. The trader's live choice of which touches to take does
 better than the rule; the code alone is not reliable.
+
+## Where the 2025–26 trades really were, and why they don't match the stated rules (`my_trades_vs_rules.py`)
+Only **5 of 82** trades met every stated rule (at yesterday's H/L, fast approach, 15m confirmation candle, level not already closed through).
+
+| level actually used | trades | win % | total |
+|---|---|---|---|
+| **yesterday's high (sells)** | 22 | 50% | **+10.7R** |
+| yesterday's low (buys) | 24 | 25% | −6.3R |
+| **4H swing low (buys)** | 14 | 57% | **+9.8R** |
+| 4H swing high (sells) | 15 | 33% | −0.2R |
+| today's earlier high/low (set more than 4h before) | 7 | 14% | −4.1R |
+
+- **Most common reason for not matching: slow approach.** 51 trades came in slowly (−6.6R); 31 came in fast (+16.6R).
+- **36 trades were not at yesterday's H/L at all**, mostly at 4H swing levels.
+- The 15m "confirmation candle" did not help (with: +3.2R, without: +6.8R). The trader probably confirms on
+  the 5m chart, and there is no 5m gold data to check that.
+
+**Code vs trader in 2025–26:** of the code's 153 trades, the 16 the trader also took made **+4.8R**. The 137 the
+trader skipped made **−21.7R**, and the skipped *buys* alone lost −26.8R. The trader's edge in this period came
+from *not* buying most of the touches of yesterday's low.
