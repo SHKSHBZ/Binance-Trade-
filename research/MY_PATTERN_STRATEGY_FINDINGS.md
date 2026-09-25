@@ -51,3 +51,22 @@ stop beyond the level, 2R): **−0.11R** before 2025-05, **−0.21R** in the tra
 With the trend added: −0.11R / −0.07R. **The mechanical level bounce does not reproduce the trader's result.**
 The trader picks levels and timing in a way a pivot rule doesn't capture. The measurable version that does
 work on older data is the pullback-in-trend rule above: the end of the pullback is where the trader sees the level.
+
+## The trader's stated method: yesterday's high/low as S/R, fast approach, wait for confirmation
+`my_pdhl_check.py` (the trader's 82 trades): a fast approach into the level (last 4h ≥0.14 dATR toward it)
+gave 32 trades, 53% win, **+18.6R** (both halves positive). Slow/medium approaches: 50 trades, −8.6R.
+Only 32 of 82 entries were within 0.25 dATR of yesterday's high/low, so other levels were used too.
+
+`my_pdhl_strategy.py` (mechanical, UTC days, rules fixed first):
+| version | 2022-06 → 2025-05 (clean) | 2025-05 → 2026-09 |
+|---|---|---|
+| **PDH/PDL + fast approach + confirmation candle, 2R** | **+0.114R, 395 trades, P=6%** (buys +0.25, sells −0.02) | **−0.111R**, 153 trades (buys −0.31, sells +0.09) |
+| without the speed check | +0.008R | −0.036R |
+| slow approach only | −0.129R | +0.114R (49 trades) |
+| without the confirmation candle | +0.059R | −0.157R |
+| + volatile day | −0.011R | +0.162R |
+
+In the clean period the speed check and the confirmation candle both help, and the method made +45R there,
+mostly from buys during the gold bull run. In the trader's own period the code lost −17R while the trader made +10R.
+Over the whole period it is about +0.05R per trade. The trader's live choice of which touches to take does
+better than the rule; the code alone is not reliable.
