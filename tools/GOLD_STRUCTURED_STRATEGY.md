@@ -28,14 +28,17 @@ In the trader's log: moving days +17.6R, quiet days −7.7R.
 ### 5. Confirmation
 The **last hour** has already turned back in the trend direction. Enter on the 15m close.
 
-### 6. Stop and target
+### 6. Stop and exit
 - **Stop:** just beyond the pullback's extreme (lowest low of the last 4h for buys) plus 0.05 × daily ATR.
-  Skip the trade if the stop is under 0.15 or over 0.6 × daily ATR.
-- **Target:** 2R. Do **not** move the stop to breakeven early (in the trader's log that turned +10R into 0R).
-- One trade at a time.
+  Skip the trade if the stop is under 0.15 or over 0.6 × daily ATR. One trade at a time.
+- **Recommended exit (higher win rate):** close **half at 1R**, move the stop to entry, and let the other half run to **3R**.
+  About 55% of trades win, the worst losing streak is 6 (vs 12), and it was positive in all 3 periods (+0.09/+0.10/+0.10R).
+  At 3% risk, $5,000 → about $20,960 (worst drop −37%). At 2% risk, about $14,200 (worst drop −26%).
+  Moving the stop to entry is fine here *only because half is already banked*. Moving the whole stop to entry at +1R hurt the trader's own trades.
+- **Alternative (fewer, bigger wins):** whole position to 2R, never move the stop. About 38% win; at 2% risk, $5,000 → about $18,000 (worst drop −31%).
 
 ### 7. Size
-Risk **2% of the account** per trade. Lot size = (account × 2%) ÷ (stop distance in $ × 100).
+Risk **2–3% of the account** per trade (3% with the half-at-1R exit). Lot size = (account × 2%) ÷ (stop distance in $ × 100).
 On $5,000 with a $25 stop that's $100 ÷ $2,500 = **0.04 lots**.
 
 ## Results (costs included, rules fixed before each check)

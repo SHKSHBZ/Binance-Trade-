@@ -7,11 +7,15 @@
 //  4. MOVING DAY: 15m ATR > 1.2 x its 5-day average, OR a candle > 3x normal size earlier today (news)
 //  5. SESSION   : 07:00-21:00 London time (London, NY overlap, NY afternoon). NO Asia.
 //  6. STOP      : beyond the pullback extreme (last 16 candles) + 0.05 daily ATR; skip if < 0.15 or > 0.6 daily ATR
-//  7. TARGET    : 2R.  One trade at a time.
+//  7. EXIT      : "Half at 1R" (default): close 50% at 1R, move stop to entry, rest to 3R  -> ~55% win rate
+//                 "Full 2R": whole position to 2R -> ~38% win rate. One trade at a time.
 strategy("Gold Pullback-in-Trend 15m", overlay=true, process_orders_on_close=true, initial_capital=5000, currency=currency.USD, pyramiding=0, commission_type=strategy.commission.cash_per_contract, commission_value=0.125)
 
-riskPct  = input.float(2.0, "Risk per trade (% of equity)", step=0.5)
-rr       = input.float(2.0, "Target (R)", step=0.5)
+riskPct  = input.float(3.0, "Risk per trade (% of equity)", step=0.5)
+exitMode = input.string("Half at 1R", "Exit", options=["Half at 1R", "Full 2R"])
+rr       = input.float(2.0, "Full-exit target (R)", step=0.5)
+tp1R     = input.float(1.0, "Half-exit: first target (R)", step=0.25)
+tp2R     = input.float(3.0, "Half-exit: runner target (R)", step=0.5)
 pbMin    = input.float(0.15, "Min pullback (x daily ATR)", step=0.05)
 useVol   = input.bool(true, "Only on moving/news days")
 sessStr  = input.session("0700-2100", "Trading hours (London time)")
@@ -47,17 +51,40 @@ stopPx = ext - dir * 0.05 * dATR
 risk   = dir * (close - stopPx)
 okRisk = risk >= 0.15 * dATR and risk <= 0.6 * dATR
 
-sizeFor(dist) => math.max(1, math.floor(strategy.equity * riskPct / 100 / (dist * syminfo.pointvalue)))
+sizeFor(dist) => math.max(2, math.floor(strategy.equity * riskPct / 100 / (dist * syminfo.pointvalue)))
 
-var int entryBar = na
+var int   entryBar = na
+var float entryPx  = na
+var float riskPx   = na
+var float initQty  = na
+halfMode = exitMode == "Half at 1R"
 if setup and okRisk
-    if dir == 1
-        strategy.entry("BUY", strategy.long, qty=sizeFor(risk))
-        strategy.exit("BUY exit", "BUY", stop=stopPx, limit=close + rr * risk)
-    else
-        strategy.entry("SELL", strategy.short, qty=sizeFor(risk))
-        strategy.exit("SELL exit", "SELL", stop=stopPx, limit=close - rr * risk)
+    q = sizeFor(risk)
+    entryPx := close
+    riskPx  := risk
+    initQty := q
     entryBar := bar_index
+    if dir == 1
+        strategy.entry("BUY", strategy.long, qty=q)
+        if halfMode
+            strategy.exit("BUY TP1", "BUY", qty_percent=50, stop=stopPx, limit=close + tp1R * risk)
+            strategy.exit("BUY TP2", "BUY", stop=stopPx, limit=close + tp2R * risk)
+        else
+            strategy.exit("BUY exit", "BUY", stop=stopPx, limit=close + rr * risk)
+    else
+        strategy.entry("SELL", strategy.short, qty=q)
+        if halfMode
+            strategy.exit("SELL TP1", "SELL", qty_percent=50, stop=stopPx, limit=close - tp1R * risk)
+            strategy.exit("SELL TP2", "SELL", stop=stopPx, limit=close - tp2R * risk)
+        else
+            strategy.exit("SELL exit", "SELL", stop=stopPx, limit=close - rr * risk)
+
+// after the first half is banked, move the runner's stop to the entry price
+if halfMode and strategy.position_size != 0 and not na(initQty) and math.abs(strategy.position_size) < initQty
+    if strategy.position_size > 0
+        strategy.exit("BUY TP2", "BUY", stop=entryPx, limit=entryPx + tp2R * riskPx)
+    else
+        strategy.exit("SELL TP2", "SELL", stop=entryPx, limit=entryPx - tp2R * riskPx)
 
 if strategy.position_size != 0 and not na(entryBar) and bar_index - entryBar >= maxBars
     strategy.close_all(comment="Max time")
