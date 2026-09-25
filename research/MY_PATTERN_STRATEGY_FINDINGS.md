@@ -35,3 +35,19 @@ at worst, 2024 a losing year) or $26,600 with the trailing stop (worst drawdown 
 **Caveat:** random entries in the trend with the same stops were also positive (+0.08R in the clean
 period). Most of the edge is trend plus a stop behind the pullback; the trader's timing adds about +0.03R.
 In 2022–25 the buys carried it (+0.22R) and the sells lost (−0.08R). In 2025–26 the sells made +0.27R.
+
+## The trader's own description: "I trade support/resistance on 1H/4H/15m/5m, inside the range"
+`my_trades_levels.py`: 81 of 82 entries were at a swing level (62 at 4H levels). There is no 5m gold data, so 5m levels were not checked.
+
+| at the level... | trades | win % | total |
+|---|---|---|---|
+| **level held** (price did not poke through before entry) | 54 | 48% | **+23.3R** (both halves +) |
+| price poked through first | 27 | 19% | **−12.3R** (both halves −) |
+| at a level on a volatile day | 35 | 51% | +18.7R |
+| at a level on a quiet day | 46 | 28% | −7.7R |
+
+`my_sr_strategy.py`: plain mechanical 4H swing-level bounce (touch without poke, rejection candle,
+stop beyond the level, 2R): **−0.11R** before 2025-05, **−0.21R** in the trader's own period.
+With the trend added: −0.11R / −0.07R. **The mechanical level bounce does not reproduce the trader's result.**
+The trader picks levels and timing in a way a pivot rule doesn't capture. The measurable version that does
+work on older data is the pullback-in-trend rule above: the end of the pullback is where the trader sees the level.
