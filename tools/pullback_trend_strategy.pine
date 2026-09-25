@@ -1,0 +1,71 @@
+//@version=5
+// GOLD PULLBACK-IN-TREND (the trader's own pattern, made mechanical). XAUUSD, 15-minute chart.
+// Tested in research/my_pattern_strategy.py + session study (Asia skipped).
+//  1. TREND     : EMA 80 vs EMA 800 on the 15m chart -> buys only / sells only
+//  2. PULLBACK  : last 4h (16 candles) moved AGAINST the trend by >= 0.15 x daily ATR (fast move into the level)
+//  3. TURN      : last 1h (4 candles) moved back WITH the trend (confirmation)
+//  4. MOVING DAY: 15m ATR > 1.2 x its 5-day average, OR a candle > 3x normal size earlier today (news)
+//  5. SESSION   : 07:00-21:00 London time (London, NY overlap, NY afternoon). NO Asia.
+//  6. STOP      : beyond the pullback extreme (last 16 candles) + 0.05 daily ATR; skip if < 0.15 or > 0.6 daily ATR
+//  7. TARGET    : 2R.  One trade at a time.
+strategy("Gold Pullback-in-Trend 15m", overlay=true, process_orders_on_close=true,
+     initial_capital=5000, currency=currency.USD, pyramiding=0,
+     commission_type=strategy.commission.cash_per_contract, commission_value=0.125)
+
+riskPct  = input.float(2.0, "Risk per trade (% of equity)", step=0.5)
+rr       = input.float(2.0, "Target (R)", step=0.5)
+pbMin    = input.float(0.15, "Min pullback (x daily ATR)", step=0.05)
+useVol   = input.bool(true, "Only on moving/news days")
+sessStr  = input.session("0700-2100", "Trading hours (London time)")
+maxBars  = input.int(500, "Max candles in a trade")
+
+dATR   = request.security(syminfo.tickerid, "D", ta.sma(ta.tr(true), 14)[1], lookahead=barmerge.lookahead_on)
+emaF   = ta.ema(close, 80)
+emaS   = ta.ema(close, 800)
+tr15   = ta.tr(true)
+atr15  = ta.sma(tr15, 14)
+atr5d  = ta.sma(tr15, 480)
+
+// gold trading day starts 18:00 New York
+sDay   = dayofmonth(time + 6 * 3600 * 1000, "America/New_York")
+newDay = ta.change(sDay) != 0
+var bool spikeToday = false
+if newDay
+    spikeToday := false
+if tr15 > 3 * atr5d
+    spikeToday := true
+
+inSess = not na(time(timeframe.period, sessStr, "Europe/London"))
+dir    = emaF > emaS ? 1 : emaF < emaS ? -1 : 0
+pull   = dir * (close - close[16]) <= -pbMin * dATR
+turn   = dir * (close - close[4]) > 0
+moving = atr15 > 1.2 * atr5d or spikeToday
+setup  = dir != 0 and inSess and pull and turn and (moving or not useVol) and strategy.position_size == 0
+
+ext    = dir == 1 ? ta.lowest(low, 16) : ta.highest(high, 16)
+stopPx = ext - dir * 0.05 * dATR
+risk   = dir * (close - stopPx)
+okRisk = risk >= 0.15 * dATR and risk <= 0.6 * dATR
+
+sizeFor(dist) => math.max(1, math.floor(strategy.equity * riskPct / 100 / (dist * syminfo.pointvalue)))
+
+var int entryBar = na
+if setup and okRisk
+    if dir == 1
+        strategy.entry("BUY", strategy.long, qty=sizeFor(risk))
+        strategy.exit("BUY exit", "BUY", stop=stopPx, limit=close + rr * risk)
+    else
+        strategy.entry("SELL", strategy.short, qty=sizeFor(risk))
+        strategy.exit("SELL exit", "SELL", stop=stopPx, limit=close - rr * risk)
+    entryBar := bar_index
+
+if strategy.position_size != 0 and not na(entryBar) and bar_index - entryBar >= maxBars
+    strategy.close_all(comment="Max time")
+
+plot(emaF, "EMA 80",  color=color.orange)
+plot(emaS, "EMA 800", color=color.blue, linewidth=2)
+bgcolor(not inSess ? color.new(color.gray, 90) : na, title="Asia / off-hours (no trades)")
+plotshape(setup and okRisk and dir == 1,  "BUY setup",  shape.labelup,   location.belowbar, color.green, text="BUY",  textcolor=color.white)
+plotshape(setup and okRisk and dir == -1, "SELL setup", shape.labeldown, location.abovebar, color.red,   text="SELL", textcolor=color.white)
+alertcondition(setup and okRisk and dir == 1,  "Pullback BUY",  "Gold pullback-in-trend BUY setup")
+alertcondition(setup and okRisk and dir == -1, "Pullback SELL", "Gold pullback-in-trend SELL setup")
