@@ -1,14 +1,14 @@
 # Gold Structured Strategy: Pullback into a Level, with the Trend
 
 Built from the trader's own 82 trades, then tested on 3 years of data from **before** the first trade.
-TradingView version: `tools/ny_breakout_strategy.pine` is the old NY idea; **this one is `tools/pullback_trend_strategy.pine`**.
+TradingView strategy to test it yourself: `tools/pullback_trend_strategy.pine`.
 
 ## Chart: XAUUSD 15-minute
 
 ### 1. Direction (the bigger picture)
 EMA 80 above EMA 800 means **buys only**. Below means **sells only**. (73 of the trader's 82 trades already did this.)
 
-### 2. Session: London time (the Exness chart is UTC; add +1h in UK summer)
+### 2. Session: London time (on a UTC chart such as Exness: same hours in winter, 1 hour earlier in UK summer, e.g. 06:00–20:00 UTC)
 | session | trade? | result in all 3 test periods |
 |---|---|---|
 | Asia 00:00–07:00 | **NO** | lost in all 3 (−0.16 / −0.33 / −0.28R) |
