@@ -31,3 +31,16 @@ RSI level, day of week, level type. The 8:30–9:30 ET news hour was +0.09R in b
 - **Avoid the NY lunch hour.**
 - The test period was used to check which conditions held up in both periods, so any
   *combination* of these rules is not yet independently validated.
+
+## Tested as a strategy (`bigday_breakout.py`): FAILED
+Rules: big day (>1.2× daily ATR), first close beyond PDH/PDL/Asia/24h level, with the EMA trend,
+skip 11–13 ET, stop ¼ daily ATR, target 2×, one trade at a time.
+
+| market | big-day breakout | same rules without the big-day filter |
+|---|---|---|
+| Gold | +0.08R (192 trades, P=18%), 2025: −0.25R | +0.08R (1,240) |
+| BTC (clean test) | −0.03R | −0.05R |
+| ETH (clean test) | −0.03R | −0.07R |
+
+The big-day filter added nothing on gold once trades were taken one at a time. On BTC and ETH,
+data never used to find it, the strategy lost money. The pattern does not survive as a tradeable rule.
